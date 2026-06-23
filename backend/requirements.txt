@@ -1,0 +1,30 @@
+# WebGPT Backend Dependencies
+# Python 3.12+
+
+# Web framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.3
+
+# Configuration
+pydantic-settings==2.9.1
+
+# Database (SQLite async)
+sqlalchemy[asyncio]==2.0.41
+aiosqlite==0.21.0
+
+# Scraping
+aiohttp==3.12.6
+beautifulsoup4==4.13.4
+lxml==5.4.0
+
+# Embeddings
+sentence-transformers==4.1.0
+
+# Vector database
+chromadb==0.6.3
+
+# Gemini LLM
+google-generativeai==0.8.5
+
+# Environment
+python-dotenv==1.1.0
