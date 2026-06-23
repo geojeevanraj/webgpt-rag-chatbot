@@ -12,6 +12,8 @@ build/
 
 # Data
 *.db
+*.db-shm
+*.db-wal
 chroma_data/
 
 # Environment
