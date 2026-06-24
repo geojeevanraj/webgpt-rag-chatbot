@@ -7,7 +7,7 @@ detailed page metrics of a specific source (GET /sources/{job_id}).
 import logging
 from typing import Union
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -55,8 +55,8 @@ class SourceDetailResponse(BaseModel):
     summary="List all scrape jobs/sources with pagination"
 )
 async def list_sources(
-    limit: int = Field(default=10, ge=1, le=100, description="Max number of sources to return."),
-    offset: int = Field(default=0, ge=0, description="Number of sources to skip."),
+    limit: int = Query(default=10, ge=1, le=100, description="Max number of sources to return."),
+    offset: int = Query(default=0, ge=0, description="Number of sources to skip."),
     db: AsyncSession = Depends(get_db)
 ) -> list[SourceSummary]:
     """Retrieve a list of all ingested scrape jobs/sources.

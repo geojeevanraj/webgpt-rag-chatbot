@@ -5,6 +5,7 @@ import ErrorBoundary from "./components/common/ErrorBoundary";
 import { useSources } from "./hooks/useSources";
 import { useScrapePolling } from "./hooks/useScrapePolling";
 import { AlertCircle, CheckCircle2, Info, Menu, X } from "lucide-react";
+import { ScrapeResponse } from "./types/api";
 
 interface ToastMessage {
   id: string;
@@ -31,7 +32,7 @@ export default function App() {
     }, 4000);
   };
 
-  const handleScrapeSuccess = (job: any) => {
+  const handleScrapeSuccess = (job: ScrapeResponse) => {
     addToast(
       "success",
       `Scrape job initiated for ${job.seed_url}! Crawling will progress in the background.`
@@ -130,10 +131,10 @@ export default function App() {
               key={toast.id}
               className={`flex items-start gap-3 rounded-lg border p-4 shadow-xl pointer-events-auto animate-in fade-in slide-in-from-top-4 duration-300 ${
                 toast.type === "success"
-                  ? "bg-slate-900/95 border-emerald-500/20 text-emerald-450"
+                  ? "bg-slate-900/95 border-emerald-500/20 text-emerald-400"
                   : toast.type === "error"
-                  ? "bg-slate-900/95 border-rose-500/20 text-rose-450"
-                  : "bg-slate-900/95 border-slate-800 text-slate-350"
+                  ? "bg-slate-900/95 border-rose-500/20 text-rose-400"
+                  : "bg-slate-900/95 border-slate-800 text-slate-300"
               }`}
             >
               {toast.type === "success" && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />}

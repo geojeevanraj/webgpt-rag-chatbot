@@ -69,7 +69,7 @@ export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
             
             {/* Inline RAG error display */}
             {error && (
-              <div className="rounded-lg border border-rose-500/15 bg-rose-500/10 p-3 text-xs text-rose-450 leading-relaxed">
+              <div className="rounded-lg border border-rose-500/15 bg-rose-500/10 p-3 text-xs text-rose-400 leading-relaxed">
                 Failed to resolve RAG query: {error}
               </div>
             )}

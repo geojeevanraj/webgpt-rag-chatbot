@@ -43,7 +43,7 @@ export default function SourceItem({
       onClick={onSelect}
       className={`group relative flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition cursor-pointer ${
         isSelected
-          ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-450"
+          ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-400"
           : "bg-slate-900/35 border-slate-800/80 text-slate-300 hover:bg-slate-900 hover:text-slate-100"
       }`}
     >

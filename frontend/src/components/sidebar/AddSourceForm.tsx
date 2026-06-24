@@ -59,7 +59,7 @@ export default function AddSourceForm({ onSuccess }: AddSourceFormProps) {
       </div>
 
       {error && (
-        <div className="rounded border border-rose-500/15 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-medium text-rose-450 leading-relaxed">
+        <div className="rounded border border-rose-500/15 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-medium text-rose-400 leading-relaxed">
           {error}
         </div>
       )}

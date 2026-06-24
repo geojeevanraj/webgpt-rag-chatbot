@@ -7,6 +7,7 @@ Gemini model, and extracting cited sources from the generated answers.
 
 import logging
 import re
+import time
 from typing import Any, Union
 
 import google.generativeai as genai
