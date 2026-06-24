@@ -79,9 +79,24 @@ def create_app() -> FastAPI:
     )
 
     # --- CORS ---
+    # Parse and clean CORS_ORIGINS from settings string to support JSON lists or comma-separated lists
+    cors_raw = settings.CORS_ORIGINS.strip()
+    cors_origins = []
+    if cors_raw:
+        if cors_raw.startswith("[") and cors_raw.endswith("]"):
+            try:
+                import json
+                parsed = json.loads(cors_raw)
+                if isinstance(parsed, list):
+                    cors_origins = [str(item).strip() for item in parsed]
+            except Exception:
+                pass
+        if not cors_origins:
+            cors_origins = [item.strip() for item in cors_raw.split(",") if item.strip()]
+
     application.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.CORS_ORIGINS,
+        allow_origins=cors_origins,
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
