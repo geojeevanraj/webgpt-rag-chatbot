@@ -11,21 +11,50 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
-  // Helper to parse [Source N] into Markdown link syntax [N](url)
+  // Helper to parse [Source N] and [N] into Markdown link syntax [N](url)
   const renderMessageContent = () => {
     if (isUser || !message.citations || message.citations.length === 0) {
       return message.content;
     }
 
-    // Replace [Source N] with [N](url) in the content string
-    return message.content.replace(/\[Source (\d+)\]/g, (match, numStr) => {
-      const index = parseInt(numStr, 10) - 1;
-      if (message.citations && index >= 0 && index < message.citations.length) {
-        const citation = message.citations[index];
-        return `[${numStr}](${citation.source_url})`;
-      }
-      return match;
-    });
+    const citations = message.citations;
+
+    // Split by code blocks (``` ... ```) first to avoid converting text inside code blocks
+    const codeBlockRegex = /(```[\s\S]*?```)/g;
+    const parts = message.content.split(codeBlockRegex);
+
+    return parts
+      .map((part) => {
+        // If it's a fenced code block, return it untouched
+        if (part.startsWith("```") && part.endsWith("```")) {
+          return part;
+        }
+
+        // Split by inline code blocks (` ... `)
+        const inlineCodeRegex = /(`[^`]+`)/g;
+        const subParts = part.split(inlineCodeRegex);
+
+        return subParts
+          .map((subPart) => {
+            // If it's an inline code block, return it untouched
+            if (subPart.startsWith("`") && subPart.endsWith("`")) {
+              return subPart;
+            }
+
+            // Perform replacement on text outside code blocks.
+            // Negative lookahead (?!\() prevents matching citations that are already links.
+            return subPart.replace(/\[(?:Source\s+)?(\d+)\](?!\()/g, (match, numStr) => {
+              const index = parseInt(numStr, 10) - 1;
+              if (index >= 0 && index < citations.length) {
+                const citation = citations[index];
+                return `[${numStr}](${citation.source_url})`;
+              }
+              return match;
+            });
+          })
+          .join("");
+      })
+      .join("");
   };
 
   return (
