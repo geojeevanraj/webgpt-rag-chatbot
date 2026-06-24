@@ -1,86 +1,161 @@
 import React, { useState } from "react";
 import Sidebar from "./components/sidebar/Sidebar";
-import LoadingSpinner from "./components/common/LoadingSpinner";
-import { Bot, MessageSquare, SendHorizontal } from "lucide-react";
+import ChatWindow from "./components/chat/ChatWindow";
+import ErrorBoundary from "./components/common/ErrorBoundary";
+import { useSources } from "./hooks/useSources";
+import { useScrapePolling } from "./hooks/useScrapePolling";
+import { AlertCircle, CheckCircle2, Info, Menu, X } from "lucide-react";
+
+interface ToastMessage {
+  id: string;
+  type: "success" | "error" | "info";
+  message: string;
+}
 
 export default function App() {
-  // F2 Requirement: Active source state ownership (null = Global Search Mode)
+  // 1. Core State Ownership
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // 2. Custom hooks: load and poll sources
+  const { sources, loading, error, refreshSources, deleteSource } = useSources();
+  useScrapePolling(sources, refreshSources);
+
+  // Helper to add toast messages that fade out automatically
+  const addToast = (type: "success" | "error" | "info", message: string) => {
+    const id = `toast-${Date.now()}`;
+    setToasts((prev) => [...prev, { id, type, message }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 4000);
+  };
+
+  const handleScrapeSuccess = (job: any) => {
+    addToast(
+      "success",
+      `Scrape job initiated for ${job.seed_url}! Crawling will progress in the background.`
+    );
+    refreshSources();
+  };
+
+  const handleDeleteSource = async (jobId: string) => {
+    try {
+      await deleteSource(jobId);
+      addToast("success", "Source successfully deleted and purged from vector index.");
+      // Reset active source context back to global search if active source was deleted
+      if (activeSourceId === jobId) {
+        setActiveSourceId(null);
+      }
+    } catch (err: any) {
+      addToast("error", err.message || "Failed to purge source index.");
+    }
+  };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased font-sans">
-      {/* 320px Sidebar container */}
-      <Sidebar
-        activeSourceId={activeSourceId}
-        onSelectSource={setActiveSourceId}
-      />
-
-      {/* Main Conversation Area */}
-      <main className="flex flex-1 flex-col overflow-hidden bg-slate-900/40">
+    <ErrorBoundary>
+      <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased font-sans">
         
-        {/* Workspace Header */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950/50 px-6 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400">
-              <MessageSquare className="h-4.5 w-4.5" />
-            </div>
-            <div>
-              <h1 className="text-sm font-semibold text-slate-100">
-                {activeSourceId ? "Website Scraped Context" : "Global Search Mode"}
-              </h1>
-              <p className="text-[10px] text-slate-500 font-medium">
-                {activeSourceId ? `Source ID: ${activeSourceId}` : "Searching across all compiled data stores"}
-              </p>
-            </div>
-          </div>
-        </header>
-
-        {/* Scrollable Conversation Feed Placeholder */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-md mx-auto">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 shadow-xl">
-              <Bot className="h-7 w-7" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-white">Ask WebGPT Chatbot</h2>
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-                Query website pages using Retrieval-Augmented Generation. 
-                Choose a specific source in the sidebar or use the search field in Global Search Mode.
-              </p>
-            </div>
-            {/* Design verification check showing loader styling */}
-            <div className="pt-2 flex items-center gap-2 text-xs text-slate-600 font-medium">
-              <LoadingSpinner size="sm" />
-              Initializing chat interfaces...
-            </div>
-          </div>
+        {/* =================================================================== */}
+        {/* Side Panel: Desktop (fixed) & Mobile (overlay drawer) */}
+        {/* =================================================================== */}
+        
+        {/* Desktop Sidebar (hidden on mobile, visible md+) */}
+        <div className="hidden md:flex h-full w-[320px] shrink-0">
+          <Sidebar
+            sources={sources}
+            activeSourceId={activeSourceId}
+            onSelectSource={setActiveSourceId}
+            onDeleteSource={handleDeleteSource}
+            onScrapeSuccess={handleScrapeSuccess}
+            loading={loading}
+          />
         </div>
 
-        {/* Fixed Bottom Chat Query Input Placeholder */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/20">
-          <div className="max-w-3xl mx-auto">
-            <div className="relative flex items-center rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
-              <textarea
-                placeholder="Ask a question about the scraped pages..."
-                disabled
-                rows={1}
-                className="w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-400 placeholder:text-slate-600 focus:outline-none disabled:cursor-not-allowed"
+        {/* Mobile Sidebar overlay (visible when toggled) */}
+        {mobileSidebarOpen && (
+          <div className="fixed inset-0 z-50 flex md:hidden bg-slate-950/80 backdrop-blur-sm">
+            <div className="h-full w-[290px] shadow-2xl animate-in slide-in-from-left duration-200">
+              <Sidebar
+                sources={sources}
+                activeSourceId={activeSourceId}
+                onSelectSource={setActiveSourceId}
+                onDeleteSource={handleDeleteSource}
+                onScrapeSuccess={handleScrapeSuccess}
+                loading={loading}
+                onCloseMobile={() => setMobileSidebarOpen(false)}
               />
+            </div>
+            {/* Click outside to close drawer */}
+            <div className="flex-1" onClick={() => setMobileSidebarOpen(false)} />
+          </div>
+        )}
+
+        {/* =================================================================== */}
+        {/* Workspace: Top bar & scroll feeds */}
+        {/* =================================================================== */}
+        <div className="flex flex-1 flex-col overflow-hidden">
+          
+          {/* Mobile Top Header (hidden on desktop) */}
+          <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-4 md:hidden">
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                disabled
-                className="flex h-9 w-9 items-center justify-center rounded-md bg-indigo-600/30 text-indigo-400/50 cursor-not-allowed transition shrink-0"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="rounded p-1.5 text-slate-400 hover:bg-slate-900 hover:text-white cursor-pointer"
               >
-                <SendHorizontal className="h-4.5 w-4.5" />
+                <Menu className="h-5.5 w-5.5" />
               </button>
+              <span className="font-semibold text-sm text-white">WebGPT Dashboard</span>
             </div>
-            <div className="mt-2 text-[10px] text-center text-slate-600">
-              WebGPT uses Gemini 2.5 Flash and local vector databases to ground all answers.
+            
+            {/* Active source banner indicator for quick status checks */}
+            <div className="text-[10px] bg-slate-900 px-2 py-1 rounded border border-slate-800 text-slate-400 font-semibold truncate max-w-[150px]">
+              {activeSourceId
+                ? sources.find((s) => s.job_id === activeSourceId)?.domain || "Scoped Source"
+                : "Global Search"}
             </div>
-          </div>
+          </header>
+
+          {/* RAG Chat interface container */}
+          <ChatWindow activeSourceId={activeSourceId} />
         </div>
 
-      </main>
-    </div>
+        {/* =================================================================== */}
+        {/* Floating Toast Notification Deck */}
+        {/* =================================================================== */}
+        <div className="fixed right-4 top-4 z-50 space-y-2.5 max-w-sm w-full pointer-events-none">
+          {toasts.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-start gap-3 rounded-lg border p-4 shadow-xl pointer-events-auto animate-in fade-in slide-in-from-top-4 duration-300 ${
+                toast.type === "success"
+                  ? "bg-slate-900/95 border-emerald-500/20 text-emerald-450"
+                  : toast.type === "error"
+                  ? "bg-slate-900/95 border-rose-500/20 text-rose-450"
+                  : "bg-slate-900/95 border-slate-800 text-slate-350"
+              }`}
+            >
+              {toast.type === "success" && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />}
+              {toast.type === "error" && <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />}
+              {toast.type === "info" && <Info className="h-5 w-5 text-indigo-400 shrink-0 mt-0.5" />}
+
+              <div className="flex-1 text-xs font-semibold leading-relaxed text-slate-200">
+                {toast.message}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                className="text-slate-500 hover:text-slate-300 rounded p-0.5 transition cursor-pointer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </ErrorBoundary>
   );
 }
