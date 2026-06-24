@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: webgpt-api
+    env: python
+    rootDir: backend
+    plan: starter # ML models require starter plan minimum for RAM/CPU allocations
+    buildCommand: pip install --upgrade pip && pip install torch --extra-index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    disk:
+      name: webgpt-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false # Required: Must be set in Render dashboard
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:////data/webgpt.db
+      - key: CHROMA_PERSIST_DIR
+        value: /data/chroma_data
+      - key: CORS_ORIGINS
+        value: '["http://localhost:5173", "https://webgpt-chatbot.vercel.app"]' # Replace with actual Vercel domain post-deployment
+      - key: EMBEDDING_MODEL
+        value: all-MiniLM-L6-v2
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
