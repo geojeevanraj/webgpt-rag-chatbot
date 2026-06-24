@@ -11,6 +11,23 @@ interface MessageBubbleProps {
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
+  // Helper to parse [Source N] into Markdown link syntax [N](url)
+  const renderMessageContent = () => {
+    if (isUser || !message.citations || message.citations.length === 0) {
+      return message.content;
+    }
+
+    // Replace [Source N] with [N](url) in the content string
+    return message.content.replace(/\[Source (\d+)\]/g, (match, numStr) => {
+      const index = parseInt(numStr, 10) - 1;
+      if (message.citations && index >= 0 && index < message.citations.length) {
+        const citation = message.citations[index];
+        return `[${numStr}](${citation.source_url})`;
+      }
+      return match;
+    });
+  };
+
   return (
     <div className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
       {/* Bot Avatar */}
@@ -42,7 +59,41 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           ) : (
             // Render markdown content safely
             <article className="prose prose-invert max-w-none text-slate-100 prose-sm prose-p:leading-relaxed prose-pre:bg-slate-950 prose-pre:border prose-pre:border-slate-800">
-              <Markdown>{message.content}</Markdown>
+              <Markdown
+                components={{
+                  a: ({ href, children, ...props }) => {
+                    const isCitationLink = typeof children === "string" && /^\d+$/.test(children);
+                    
+                    if (isCitationLink) {
+                      return (
+                        <a
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline font-semibold text-xs mx-0.5 align-super bg-blue-500/10 px-1 py-0.5 rounded border border-blue-500/20 inline-flex items-center cursor-pointer transition-all"
+                          {...props}
+                        >
+                          [{children}]
+                        </a>
+                      );
+                    }
+
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                        {...props}
+                      >
+                        {children}
+                      </a>
+                    );
+                  }
+                }}
+              >
+                {renderMessageContent()}
+              </Markdown>
             </article>
           )}
         </div>
