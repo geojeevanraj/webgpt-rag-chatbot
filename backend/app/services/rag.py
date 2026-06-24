@@ -140,7 +140,7 @@ def build_prompt(question: str, context: str) -> str:
         "2. If the context does not contain enough information to answer the question, respond with: "
         "\"I don't have enough information from the scraped content to answer this question.\"\n"
         "3. Do NOT make up information or use knowledge outside the provided context. If a fact cannot be found in the context, treat it as unknown.\n"
-        "4. Cite your sources using [Source N] format inline in your answer wherever you reference specific information.\n"
+        "4. Answer naturally and use clean markdown formatting. Do NOT include any inline citations (such as [Source N], [N], or Source N) in your answer. Never mention source numbers or labels in the response body.\n"
         "5. Be concise but thorough. Use markdown formatting (bold, lists, code blocks) when appropriate.\n"
         "6. If multiple sources contain relevant information, synthesize them into a coherent answer.\n\n"
         f"--- CONTEXT ---\n\n{context}\n\n--- END CONTEXT ---\n\n"
