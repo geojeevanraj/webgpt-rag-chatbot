@@ -96,7 +96,4 @@ export interface ApiError {
   detail: string;
 }
 
-export interface SuggestionResponse {
-  job_id: string;
-  suggestions: string[];
-}
+

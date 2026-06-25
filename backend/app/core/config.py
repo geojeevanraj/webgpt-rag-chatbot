@@ -38,15 +38,11 @@ class Settings(BaseSettings):
     # --- Models & Multi-LLM provider config ---
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     GEMINI_MODEL: str = "gemini-2.5-flash"
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
-    GROQ_API_KEY: str = ""
 
     PRIMARY_PROVIDER: str = "gemini"
     PRIMARY_MODEL: str = "gemini-2.5-flash"
     FALLBACK_MODEL_1: str = "gemini-2.5-flash-lite"
     FALLBACK_MODEL_2: str = "gemini-1.5-flash"
-    FALLBACK_PROVIDER: str = "groq"
-    FALLBACK_GROQ_MODEL: str = "llama-3.3-70b-versatile"
     MAX_RETRIES: int = 3
     RETRY_BACKOFF_SECONDS: float = 2.0
 

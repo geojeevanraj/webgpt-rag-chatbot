@@ -186,8 +186,4 @@ class ErrorResponse(BaseModel):
     detail: str = Field(..., description="Human-readable error description.")
 
 
-class SuggestionResponse(BaseModel):
-    """Response body for GET /api/suggestions/{job_id}."""
 
-    job_id: str
-    suggestions: list[str] = Field(default_factory=list, description="List of generated questions.")

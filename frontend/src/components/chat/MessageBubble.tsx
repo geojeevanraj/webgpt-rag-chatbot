@@ -1,8 +1,7 @@
 import React from "react";
 import { WebChatMessage } from "../../types/api";
 import Markdown from "react-markdown";
-import CitationChip from "./CitationChip";
-import { AlertCircle, User } from "lucide-react";
+import { AlertCircle, User, ExternalLink } from "lucide-react";
 import logo from "../../assets/logo.png";
 
 interface MessageBubbleProps {
@@ -13,51 +12,15 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isError = !!message.isError;
 
-  // Helper to parse [Source N] and [N] into Markdown link syntax [N](url)
-  const renderMessageContent = () => {
-    if (isUser || !message.citations || message.citations.length === 0) {
-      return message.content;
-    }
+  // Deduplicate citations by source_url to prevent rendering duplicate source listings
+  const uniqueCitations = message.citations
+    ? message.citations.filter(
+        (c, index, self) =>
+          self.findIndex((t) => t.source_url === c.source_url) === index
+      )
+    : [];
 
-    const citations = message.citations;
 
-    // Split by code blocks (``` ... ```) first to avoid converting text inside code blocks
-    const codeBlockRegex = /(```[\s\S]*?```)/g;
-    const parts = message.content.split(codeBlockRegex);
-
-    return parts
-      .map((part) => {
-        // If it's a fenced code block, return it untouched
-        if (part.startsWith("```") && part.endsWith("```")) {
-          return part;
-        }
-
-        // Split by inline code blocks (` ... `)
-        const inlineCodeRegex = /(`[^`]+`)/g;
-        const subParts = part.split(inlineCodeRegex);
-
-        return subParts
-          .map((subPart) => {
-            // If it's an inline code block, return it untouched
-            if (subPart.startsWith("`") && subPart.endsWith("`")) {
-              return subPart;
-            }
-
-            // Perform replacement on text outside code blocks.
-            // Negative lookahead (?!\() prevents matching citations that are already links.
-            return subPart.replace(/\[(?:Source\s+)?(\d+)\](?!\()/g, (match, numStr) => {
-              const index = parseInt(numStr, 10) - 1;
-              if (index >= 0 && index < citations.length) {
-                const citation = citations[index];
-                return `[${numStr}](${citation.source_url})`;
-              }
-              return match;
-            });
-          })
-          .join("");
-      })
-      .join("");
-  };
 
   return (
     <div className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -93,7 +56,9 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             </div>
           ) : message.content === "" ? (
             // Optimistic Bouncing Loader Animation
-            <div className="flex items-center gap-1.5 py-1" role="status">
+            // min-h keeps the placeholder bubble close to a real response height so the
+            // scroll container's scrollHeight doesn't wildly change between states.
+            <div className="flex items-center gap-1.5 py-1 min-h-[2rem]" role="status">
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.3s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400 [animation-delay:-0.15s]" />
               <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-400" />
@@ -135,25 +100,48 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
                   }
                 }}
               >
-                {renderMessageContent()}
+                {message.content}
               </Markdown>
             </article>
           )}
+
+          {/* Sources Section */}
+          {!isUser && uniqueCitations.length > 0 && (
+            <div className="mt-3 w-full border-t border-slate-800/80 pt-3">
+              <h4 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                Sources
+              </h4>
+              <div className="flex flex-col gap-2">
+                {uniqueCitations.map((citation, index) => (
+                  <a
+                    key={`${citation.source_url}-${index}`}
+                    href={citation.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group flex items-start gap-2.5 rounded border border-slate-800/80 bg-slate-950/20 p-2.5 hover:bg-slate-900/40 hover:border-slate-700/80 transition-all duration-200"
+                  >
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-indigo-400 group-hover:bg-indigo-950/40 group-hover:text-indigo-300 transition-colors">
+                      {index + 1}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs font-medium text-slate-200 group-hover:text-indigo-400 transition-colors line-clamp-1">
+                          {citation.page_title}
+                        </span>
+                        <ExternalLink className="h-3.5 w-3.5 text-slate-500 opacity-0 group-hover:opacity-100 group-hover:text-indigo-400 transition-all shrink-0 ml-0.5" />
+                      </div>
+                      <span className="block text-[10px] text-slate-500 truncate mt-0.5">
+                        {citation.source_url}
+                      </span>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Cited Sources list */}
-        {!isUser && message.citations && message.citations.length > 0 && (
-          <div className="mt-1 flex flex-wrap gap-2 items-center">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Sources:</span>
-            {message.citations.map((citation, index) => (
-              <CitationChip
-                key={`${citation.source_url}-${index}`}
-                citation={citation}
-                index={index + 1}
-              />
-            ))}
-          </div>
-        )}
+
       </div>
 
       {/* User Avatar */}

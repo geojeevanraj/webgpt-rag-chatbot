@@ -199,6 +199,36 @@ def extract_citations(
     return citations
 
 
+def clean_citations_from_text(text: str) -> str:
+    """Remove all inline source reference markers from the text response.
+
+    Strips [Source N], [N], (Source N), and Source N (where N is a digit).
+    """
+    if not text:
+        return text
+
+    # Remove [Source \d+] or [Source \d]
+    text = re.sub(r'\[Source\s+\d+\]', '', text, flags=re.IGNORECASE)
+    # Remove (Source \d+) or (Source \d)
+    text = re.sub(r'\(\s*Source\s+\d+\s*\)', '', text, flags=re.IGNORECASE)
+    # Remove bracketed digits like [1], [2]
+    text = re.sub(r'\[\s*\d+\s*\]', '', text)
+    # Remove parenthesized digits like (1), (2)
+    text = re.sub(r'\(\s*\d+\s*\)', '', text)
+    # Remove standalone Source \d+ (e.g. "Source 1", "source 2")
+    text = re.sub(r'\bSource\s+\d+\b', '', text, flags=re.IGNORECASE)
+
+    # Clean up trailing spaces before punctuation or duplicate whitespace
+    text = re.sub(r'\s+([.,;:!?])', r'\1', text)
+    # Clean up multiple spaces
+    text = re.sub(r' +', ' ', text)
+    # Clean up empty parentheses/brackets that might have been left
+    text = re.sub(r'\(\s*\)', '', text)
+    text = re.sub(r'\[\s*\]', '', text)
+
+    return text.strip()
+
+
 async def generate_answer(job_id: Union[str, None], question: str) -> dict[str, Any]:
     """Execute the full RAG pipeline to answer a user's question.
 
@@ -254,7 +284,10 @@ async def generate_answer(job_id: Union[str, None], question: str) -> dict[str, 
     # 6. Citation extraction and output formatting
     citations = extract_citations(chunks, answer)
 
+    # 7. Post-process to remove all inline citation markers from response text
+    clean_answer = clean_citations_from_text(answer)
+
     return {
-        "answer": answer,
+        "answer": clean_answer,
         "citations": citations
     }

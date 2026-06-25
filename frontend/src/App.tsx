@@ -56,7 +56,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased font-sans">
+      <div className="flex h-screen h-dvh w-screen overflow-hidden bg-slate-950 text-slate-100 antialiased font-sans">
         
         {/* =================================================================== */}
         {/* Side Panel: Desktop (fixed) & Mobile (overlay drawer) */}
@@ -96,7 +96,7 @@ export default function App() {
         {/* =================================================================== */}
         {/* Workspace: Top bar & scroll feeds */}
         {/* =================================================================== */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col min-h-0 overflow-hidden">
           
           {/* Mobile Top Header (hidden on desktop) */}
           <header className="flex h-14 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950 px-4 md:hidden">

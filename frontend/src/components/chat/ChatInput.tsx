@@ -49,7 +49,7 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="p-4 border-t border-slate-800 bg-slate-950/20">
+    <div className="p-4 border-t border-slate-800 bg-slate-950/20 shrink-0">
       <div className="max-w-3xl mx-auto">
         <div className="relative flex items-end rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
           <textarea

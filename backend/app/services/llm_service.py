@@ -87,56 +87,6 @@ class GeminiProvider(BaseLLMProvider):
                 raise LLMException(f"Gemini generation failed: {e}") from e
 
 
-class GroqProvider(BaseLLMProvider):
-    """Provider class for Groq OpenAI-compatible Chat Completions API."""
-
-    def __init__(self, model_name: str, api_key: str) -> None:
-        self.model_name = model_name
-        self.api_key = api_key
-        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
-
-    async def generate_answer(self, system_prompt: str, context: str, question: str) -> str:
-        prompt = (
-            f"SYSTEM INSTRUCTIONS:\n{system_prompt}\n\n"
-            f"--- CONTEXT ---\n{context}\n--- END CONTEXT ---\n\n"
-            f"USER QUESTION:\n{question}"
-        )
-
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
-
-        payload = {
-            "model": self.model_name,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.3
-        }
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.api_url, headers=headers, json=payload, timeout=20) as resp:
-                    if resp.status == 429:
-                        raise RateLimitExceeded("Groq Rate Limit Exceeded")
-                    elif resp.status in (502, 503, 504):
-                        raise AIServiceUnavailable("Groq Service Temporarily Unavailable")
-                    elif resp.status != 200:
-                        err_body = await resp.text()
-                        raise LLMException(f"Groq API error status {resp.status}: {err_body}")
-
-                    result = await resp.json()
-                    answer = result["choices"][0]["message"]["content"]
-                    if not answer:
-                        raise LLMException("Groq returned an empty response.")
-                    return answer
-        except aiohttp.ClientError as ce:
-            raise AIServiceUnavailable(f"Groq Network Error: {ce}") from ce
-        except Exception as e:
-            if isinstance(e, (RateLimitExceeded, AIServiceUnavailable, LLMException)):
-                raise e
-            raise LLMException(f"Groq generation failed: {e}") from e
 
 
 # --- Orchestration Service Layer ---
@@ -152,8 +102,6 @@ async def generate_with_retry(
     """Invoke the provider's generate_answer method with exponential backoff retries."""
     if provider_name == "gemini":
         provider = GeminiProvider(model_name, api_key)
-    elif provider_name == "groq":
-        provider = GroqProvider(model_name, api_key)
     else:
         raise LLMException(f"Unsupported provider: {provider_name}")
 
@@ -194,13 +142,12 @@ async def generate_with_retry(
 
 
 async def generate_llm_answer(context: str, question: str) -> str:
-    """Orchestrate answer generation across fallback models and providers.
+    """Orchestrate answer generation across fallback models.
 
     Deterministic fallback order:
     1. Primary Gemini Model (Gemini 2.5 Flash)
     2. Fallback Gemini Model 1 (Gemini 2.5 Flash Lite)
     3. Fallback Gemini Model 2 (Gemini 1.5 Flash)
-    4. Fallback Provider Model (Groq llama-3.3-70b-versatile)
     """
     system_prompt = (
         "You are WebGPT.\n"
@@ -208,7 +155,7 @@ async def generate_llm_answer(context: str, question: str) -> str:
         "Never invent information.\n"
         "If the answer cannot be found in the retrieved context, explicitly state that "
         "\"I don't have enough information from the scraped content to answer this question.\".\n"
-        "Always preserve citation placeholders exactly as provided."
+        "Answer naturally without including any inline citation markers (such as [Source 1], [1], (Source 2), or Source 3) in the response text. Do not cite source numbers or labels anywhere in the response body."
     )
 
     models_sequence = [
@@ -216,7 +163,6 @@ async def generate_llm_answer(context: str, question: str) -> str:
         (settings.PRIMARY_PROVIDER, settings.PRIMARY_MODEL, settings.GEMINI_API_KEY),
         ("gemini", settings.FALLBACK_MODEL_1, settings.GEMINI_API_KEY),
         ("gemini", settings.FALLBACK_MODEL_2, settings.GEMINI_API_KEY),
-        (settings.FALLBACK_PROVIDER, settings.FALLBACK_GROQ_MODEL, settings.GROQ_API_KEY),
     ]
 
     last_error = None

@@ -28,11 +28,19 @@
   background: #475569;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
 body {
   background-color: var(--color-bg-dark);
   color: var(--color-text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  overflow-x: hidden;
 }
 
 /* Custom markdown rendering styling for .prose container in chat bubbles */

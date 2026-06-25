@@ -6,7 +6,7 @@ import LoadingSpinner from "../common/LoadingSpinner";
 import { Bot, MessageSquare } from "lucide-react";
 import AddSourceForm from "../sidebar/AddSourceForm";
 import logo from "../../assets/logo.png";
-import SuggestedQuestions from "./SuggestedQuestions";
+
 
 interface ChatWindowProps {
   activeSourceId: string | null;
@@ -15,11 +15,18 @@ interface ChatWindowProps {
 
 export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWindowProps) {
   const { messages, loading, generating, error, sendMessage } = useChat(activeSourceId);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  // Ref to the scrollable message container — we scroll it directly so the browser
+  // window never scrolls. scrollIntoView() is intentionally avoided because it
+  // walks up the ancestor chain and can scroll the <body> when layout is in flux
+  // (e.g. the tiny typing-indicator bubble being replaced by a tall response card).
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to the bottom of the conversation feed on new messages
+  // Imperatively scroll the overflow container to its bottom after every message change.
+  // Using scrollTop = scrollHeight is guaranteed to target only this container.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
   const suggestions = [
@@ -57,7 +64,7 @@ export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWind
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-slate-900/40">
+    <div className="flex flex-1 flex-col min-h-0 overflow-hidden bg-slate-900/40">
       
       {/* Dynamic Header */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950/50 px-6 backdrop-blur">
@@ -76,8 +83,8 @@ export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWind
         </div>
       </header>
 
-      {/* Main Conversation Thread Feed */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* Main Conversation Thread Feed — this is the ONLY scrollable container */}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-6">
         {loading && messages.length === 0 ? (
           // Initial History Loading state
           <div className="flex h-full flex-col items-center justify-center text-slate-500">
@@ -127,19 +134,11 @@ export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWind
                 Failed to resolve RAG query: {error}
               </div>
             )}
-            
-            <div ref={bottomRef} />
           </div>
         )}
       </div>
 
-      {messages.length === 0 && (
-        <SuggestedQuestions
-          jobId={activeSourceId}
-          onSelectQuestion={sendMessage}
-          disabled={generating || loading}
-        />
-      )}
+
 
       {/* Fixed bottom textarea chat input card */}
       <ChatInput onSend={sendMessage} disabled={generating || loading} />
