@@ -45,9 +45,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info("Starting WebGPT API...")
     await init_db()
     logger.info("Database initialized.")
+    logger.info("Gemini API key loaded: %s", bool(settings.GEMINI_API_KEY.strip()))
+    logger.info("Gemini model: %s", settings.GEMINI_MODEL)
+    logger.info("Groq API key loaded: %s", bool(settings.GROQ_API_KEY.strip()))
+    logger.info("Groq model: %s", settings.GROQ_MODEL)
     logger.info(
-        "Configuration: gemini_model=%s, embedding_model=%s, chunk_size=%d, chunk_overlap=%d",
+        "Configuration: gemini_model=%s, groq_model=%s, embedding_model=%s, chunk_size=%d, chunk_overlap=%d",
         settings.GEMINI_MODEL,
+        settings.GROQ_MODEL,
         settings.EMBEDDING_MODEL,
         settings.CHUNK_SIZE,
         settings.CHUNK_OVERLAP,

@@ -199,13 +199,13 @@ def extract_citations(
     return citations
 
 
-def generate_answer(job_id: Union[str, None], question: str) -> dict[str, Any]:
+async def generate_answer(job_id: Union[str, None], question: str) -> dict[str, Any]:
     """Execute the full RAG pipeline to answer a user's question.
 
     Steps:
     1. Embed query and search collection(s).
     2. Format context and build the augmented prompt.
-    3. Invoke the Gemini API.
+    3. Invoke the Multi-LLM Orchestration Service.
     4. Parse references in the answer and extract cited sources.
 
     Args:
@@ -217,7 +217,7 @@ def generate_answer(job_id: Union[str, None], question: str) -> dict[str, Any]:
 
     Raises:
         ValueError: If input is invalid.
-        RuntimeError: If Gemini API or downstream queries fail.
+        RuntimeError: If LLM service generation fails.
     """
     # 1. Input validation
     if not question or not question.strip():
@@ -239,43 +239,17 @@ def generate_answer(job_id: Union[str, None], question: str) -> dict[str, Any]:
             "citations": []
         }
 
-    # 4. Prompt construction
+    # 4. Context construction
     context_str = build_context(chunks)
-    prompt = build_prompt(question, context_str)
 
-    # 5. Gemini API invocation
-    logger.info("Configuring Gemini API client and invoking %s...", settings.GEMINI_MODEL)
+    # 5. Multi-LLM provider API invocation
+    logger.info("Invoking Multi-LLM Orchestration Service for question...")
     try:
-        # Load API key and instantiate model client
-        genai.configure(api_key=settings.GEMINI_API_KEY)
-        model = genai.GenerativeModel(settings.GEMINI_MODEL)
-
-        # Restrict parameters for high factual grounding
-        config = GenerationConfig(
-            temperature=0.3,
-            max_output_tokens=2048,
-            top_p=0.95
-        )
-
-        start_time = time.time()
-        response = model.generate_content(prompt, generation_config=config)
-        elapsed = time.time() - start_time
-        logger.info("Gemini inference completed in %.2f seconds", elapsed)
-
-        answer = response.text
-        if not answer:
-            # Handle empty API response
-            raise RuntimeError("Gemini returned an empty response text.")
-
+        from app.services.llm_service import generate_llm_answer
+        answer = await generate_llm_answer(context_str, question)
     except Exception as e:
-        # Map Gemini API exceptions cleanly
-        logger.error("Gemini API invocation failed: %s", e)
-        # Check if the error message is related to rate limiting (429)
-        if "429" in str(e) or "quota" in str(e).lower():
-            raise RuntimeError(
-                "The AI service is temporarily busy. Please try again in a moment."
-            ) from e
-        raise RuntimeError(f"AI generation failed: {e}") from e
+        logger.exception("Multi-LLM answer generation failed: %s", e)
+        raise RuntimeError(str(e)) from e
 
     # 6. Citation extraction and output formatting
     citations = extract_citations(chunks, answer)

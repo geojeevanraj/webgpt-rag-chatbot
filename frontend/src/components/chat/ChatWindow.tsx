@@ -4,19 +4,57 @@ import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import LoadingSpinner from "../common/LoadingSpinner";
 import { Bot, MessageSquare } from "lucide-react";
+import AddSourceForm from "../sidebar/AddSourceForm";
+import logo from "../../assets/logo.png";
+import SuggestedQuestions from "./SuggestedQuestions";
 
 interface ChatWindowProps {
   activeSourceId: string | null;
+  onScrapeSuccess?: (job: any) => void;
 }
 
-export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
-  const { messages, loading, error, sendMessage } = useChat(activeSourceId);
+export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWindowProps) {
+  const { messages, loading, generating, error, sendMessage } = useChat(activeSourceId);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to the bottom of the conversation feed on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  const suggestions = [
+    "What is the main purpose of this website?",
+    "Summarize the key sections or features discussed.",
+    "List any technical requirements or specifications.",
+  ];
+
+  if (!activeSourceId) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center bg-slate-900/40 p-6 text-center">
+        <div className="max-w-md w-full space-y-6">
+          {/* Logo and Greeting */}
+          <img
+            src={logo}
+            alt="WebGPT Logo"
+            className="h-16 w-16 rounded-2xl object-cover shadow-xl shadow-indigo-500/15 mx-auto border border-slate-800 bg-slate-950/45 p-1"
+          />
+          <div>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Hello, this is WebGPT
+            </h1>
+            <p className="text-xs text-slate-400 mt-2 leading-relaxed max-w-sm mx-auto">
+              Enter a website URL below to recursively crawl, index, and query the site using grounded RAG.
+            </p>
+          </div>
+
+          {/* Centered Add Source Input card */}
+          <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-5 shadow-2xl backdrop-blur">
+            <AddSourceForm onSuccess={onScrapeSuccess || (() => {})} />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-slate-900/40">
@@ -29,10 +67,10 @@ export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
           </div>
           <div>
             <h1 className="text-sm font-semibold text-slate-100">
-              {activeSourceId ? "Website Scraped Context" : "Global Search Mode"}
+              Website Scraped Context
             </h1>
             <p className="text-[10px] text-slate-500 font-medium">
-              {activeSourceId ? `Source ID: ${activeSourceId}` : "Searching across all compiled data stores"}
+              Source ID: {activeSourceId}
             </p>
           </div>
         </div>
@@ -48,16 +86,32 @@ export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
           </div>
         ) : messages.length === 0 ? (
           // Welcome / Empty state
-          <div className="flex flex-col items-center justify-center h-full text-center space-y-4 max-w-md mx-auto">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-900 border border-slate-800 text-slate-400 shadow-xl">
-              <Bot className="h-7 w-7" />
-            </div>
+          <div className="flex flex-col items-center justify-center h-full text-center space-y-5 max-w-lg mx-auto">
+            <img
+              src={logo}
+              alt="WebGPT Logo"
+              className="h-14 w-14 rounded-2xl object-cover shadow-xl border border-slate-800 bg-slate-950/45 p-1"
+            />
             <div>
               <h2 className="text-base font-semibold text-white">Ask WebGPT</h2>
-              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
+              <p className="text-xs text-slate-500 mt-1.5 leading-relaxed max-w-md mx-auto">
                 Query website pages using Retrieval-Augmented Generation. 
                 Select a specific source from the sidebar or use the search field in Global Search Mode.
               </p>
+            </div>
+
+            {/* Quick start suggestion chips */}
+            <div className="flex flex-col sm:flex-row flex-wrap justify-center gap-2.5 max-w-md pt-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => sendMessage(s)}
+                  className="rounded-lg border border-slate-800/80 bg-slate-900/20 px-3.5 py-2 text-xs text-slate-400 hover:border-indigo-500/40 hover:bg-indigo-600/5 hover:text-indigo-400 transition cursor-pointer text-left sm:text-center w-full sm:w-auto"
+                >
+                  {s}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -67,7 +121,7 @@ export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
               <MessageBubble key={msg.id} message={msg} />
             ))}
             
-            {/* Inline RAG error display */}
+            {/* Inline RAG error display for global state load errors */}
             {error && (
               <div className="rounded-lg border border-rose-500/15 bg-rose-500/10 p-3 text-xs text-rose-400 leading-relaxed">
                 Failed to resolve RAG query: {error}
@@ -79,8 +133,16 @@ export default function ChatWindow({ activeSourceId }: ChatWindowProps) {
         )}
       </div>
 
+      {messages.length === 0 && (
+        <SuggestedQuestions
+          jobId={activeSourceId}
+          onSelectQuestion={sendMessage}
+          disabled={generating || loading}
+        />
+      )}
+
       {/* Fixed bottom textarea chat input card */}
-      <ChatInput onSend={sendMessage} disabled={loading} />
+      <ChatInput onSend={sendMessage} disabled={generating || loading} />
     </div>
   );
 }

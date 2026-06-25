@@ -6,6 +6,7 @@ import { useSources } from "./hooks/useSources";
 import { useScrapePolling } from "./hooks/useScrapePolling";
 import { AlertCircle, CheckCircle2, Info, Menu, X } from "lucide-react";
 import { ScrapeResponse } from "./types/api";
+import logo from "./assets/logo.png";
 
 interface ToastMessage {
   id: string;
@@ -107,6 +108,7 @@ export default function App() {
               >
                 <Menu className="h-5.5 w-5.5" />
               </button>
+              <img src={logo} alt="WebGPT Logo" className="h-6 w-6 rounded object-cover" />
               <span className="font-semibold text-sm text-white">WebGPT Dashboard</span>
             </div>
             
@@ -119,7 +121,10 @@ export default function App() {
           </header>
 
           {/* RAG Chat interface container */}
-          <ChatWindow activeSourceId={activeSourceId} />
+          <ChatWindow
+            activeSourceId={activeSourceId}
+            onScrapeSuccess={handleScrapeSuccess}
+          />
         </div>
 
         {/* =================================================================== */}

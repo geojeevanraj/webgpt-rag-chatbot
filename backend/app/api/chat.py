@@ -8,7 +8,7 @@ import asyncio
 from datetime import datetime
 import json
 import logging
-from typing import Union
+from typing import Any, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
-from app.models.database import ChatMessage, ScrapeJob
+from app.models.database import ChatMessage, ScrapeJob, QuestionSuggestion
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -72,6 +72,12 @@ class WebChatHistoryResponse(BaseModel):
     messages: list[WebChatMessage] = Field(default_factory=list)
 
 
+class SuggestionResponse(BaseModel):
+    """Response body for GET /api/suggestions/{job_id}."""
+    job_id: str
+    suggestions: list[str] = Field(default_factory=list)
+
+
 # =============================================================================
 # Router Endpoints
 # =============================================================================
@@ -124,8 +130,8 @@ async def ask_question(
     # 2. Invoke RAG Generation pipeline
     try:
         from app.services.rag import generate_answer
-        # generate_answer performs network IO and inference; execute in thread pool
-        rag_res = await asyncio.to_thread(generate_answer, request.job_id, question_str)
+        # generate_answer is now an async coroutine; await it directly
+        rag_res = await generate_answer(request.job_id, question_str)
     except Exception as e:
         logger.error("RAG pipeline execution failed: %s", e)
         # Map known errors or re-raise as Service Unavailable (503)
@@ -250,3 +256,142 @@ async def get_chat_history(
         )
 
     return WebChatHistoryResponse(messages=web_messages)
+
+
+@router.get(
+    "/suggestions/{job_id}",
+    response_model=SuggestionResponse,
+    responses={
+        404: {"description": "Job not found"}
+    },
+    summary="Retrieve suggested questions for a scrape job context"
+)
+async def get_suggestions(
+    job_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> SuggestionResponse:
+    """Retrieve exactly 10 AI suggested questions for a completed scrape job.
+
+    Uses a database caching strategy to ensure Groq is only called once.
+    """
+    # 1. Handle global or null scope
+    if job_id.lower() in ("global", "null", "none"):
+        return SuggestionResponse(job_id=job_id, suggestions=[])
+
+    # 2. Check cache first
+    stmt = select(QuestionSuggestion).where(QuestionSuggestion.job_id == job_id).order_by(
+        QuestionSuggestion.created_at.asc()
+    )
+    res = await db.execute(stmt)
+    db_suggestions = res.scalars().all()
+
+    if db_suggestions:
+        logger.info("[%s] Returning %d cached suggested questions from DB.", job_id, len(db_suggestions))
+        return SuggestionResponse(
+            job_id=job_id,
+            suggestions=[s.question for s in db_suggestions]
+        )
+
+    # 3. If no suggestions exist, verify the job is completed
+    job_stmt = select(ScrapeJob).where(ScrapeJob.id == job_id)
+    job_res = await db.execute(job_stmt)
+    job = job_res.scalar_one_or_none()
+
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scrape job '{job_id}' not found."
+        )
+
+    if job.status != "completed":
+        # Job not finished or failed; suggestions aren't ready/applicable
+        return SuggestionResponse(job_id=job_id, suggestions=[])
+
+    # 4. Generate on-demand once if missing (failsafe for pre-existing or failed background generation)
+    logger.info("[%s] Suggestions cache miss for completed job. Generating on-demand...", job_id)
+    try:
+        from app.services.vector_store import get_collection
+        collection = get_collection(job_id)
+        # Limit retrieval to 25 representative documents
+        data = collection.get(limit=25)
+        documents = data.get("documents", [])
+
+        if documents:
+            full_text = "\n\n".join(documents)
+            from app.services.groq_service import GroqService
+            groq_svc = GroqService()
+            suggestions = await groq_svc.generate_suggestions(full_text)
+
+            if suggestions:
+                # Store generated suggestions in database
+                for sugg_text in suggestions:
+                    db_sugg = QuestionSuggestion(
+                        job_id=job_id,
+                        question=sugg_text
+                    )
+                    db.add(db_sugg)
+                await db.commit()
+                logger.info("[%s] Stored %d generated questions in DB.", job_id, len(suggestions))
+                return SuggestionResponse(job_id=job_id, suggestions=suggestions)
+    except Exception as e:
+        logger.warning("[%s] Failed to generate suggested questions on-demand: %s", job_id, e)
+
+    return SuggestionResponse(job_id=job_id, suggestions=[])
+
+
+@router.get(
+    "/debug/gemini",
+    tags=["Debug"],
+    summary="Debug Gemini API connectivity"
+)
+async def debug_gemini() -> dict[str, Any]:
+    """Temporary diagnostic endpoint to audit Gemini API connectivity.
+
+    Verifies key presence, client initialization, and test prompt generation.
+    """
+    from app.core.config import settings
+    import google.generativeai as genai
+    from google.generativeai.types import GenerationConfig
+    import time
+
+    api_key = settings.GEMINI_API_KEY.strip()
+    key_loaded = bool(api_key)
+    model_name = settings.GEMINI_MODEL
+
+    if not key_loaded:
+        return {
+            "api_key_loaded": False,
+            "model": model_name,
+            "error": "GEMINI_API_KEY environment variable is missing or empty."
+        }
+
+    try:
+        # Configure API key
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+
+        # Generate a test request
+        config = GenerationConfig(
+            temperature=0.0,
+            max_output_tokens=10,
+        )
+        start_time = time.time()
+        response = model.generate_content("Reply with the word SUCCESS", generation_config=config)
+        elapsed = time.time() - start_time
+
+        response_text = response.text.strip() if response.text else ""
+
+        return {
+            "api_key_loaded": True,
+            "model": model_name,
+            "response": response_text,
+            "elapsed_seconds": round(elapsed, 3)
+        }
+    except Exception as e:
+        logger.exception("Gemini debug connectivity test failed")
+        return {
+            "api_key_loaded": True,
+            "model": model_name,
+            "error": str(e),
+            "error_type": type(e).__name__
+        }

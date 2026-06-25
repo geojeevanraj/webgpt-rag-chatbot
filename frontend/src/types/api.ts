@@ -61,6 +61,7 @@ export interface WebChatMessage {
   content: string;
   citations?: CitationInfo[] | null;
   created_at: string;
+  isError?: boolean;
 }
 
 export interface WebChatHistoryResponse {
@@ -93,4 +94,9 @@ export interface SourceDetailResponse {
 export interface ApiError {
   status: number;
   detail: string;
+}
+
+export interface SuggestionResponse {
+  job_id: string;
+  suggestions: string[];
 }

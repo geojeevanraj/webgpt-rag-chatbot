@@ -75,6 +75,12 @@ class ScrapeJob(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    suggestions: Mapped[list["QuestionSuggestion"]] = relationship(
+        "QuestionSuggestion",
+        back_populates="job",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     def __repr__(self) -> str:
         return (
@@ -157,3 +163,29 @@ class ChatMessage(Base):
     def __repr__(self) -> str:
         content_preview = self.content[:50] + "..." if len(self.content) > 50 else self.content
         return f"<ChatMessage id={self.id!r} role={self.role!r} content={content_preview!r}>"
+
+
+class QuestionSuggestion(Base):
+    """An AI generated suggested question for a scrape job context."""
+
+    __tablename__ = "question_suggestions"
+
+    id: Mapped[str] = mapped_column(
+        String(36), primary_key=True, default=_generate_uuid
+    )
+    job_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("scrape_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+
+    # Relationship back to parent job
+    job: Mapped["ScrapeJob"] = relationship("ScrapeJob", back_populates="suggestions")
+
+    def __repr__(self) -> str:
+        return f"<QuestionSuggestion id={self.id!r} job_id={self.job_id!r} question={self.question!r}>"

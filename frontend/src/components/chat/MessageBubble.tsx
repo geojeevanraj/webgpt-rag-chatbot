@@ -2,7 +2,8 @@ import React from "react";
 import { WebChatMessage } from "../../types/api";
 import Markdown from "react-markdown";
 import CitationChip from "./CitationChip";
-import { Bot, User } from "lucide-react";
+import { AlertCircle, User } from "lucide-react";
+import logo from "../../assets/logo.png";
 
 interface MessageBubbleProps {
   message: WebChatMessage;
@@ -10,6 +11,7 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === "user";
+  const isError = !!message.isError;
 
   // Helper to parse [Source N] and [N] into Markdown link syntax [N](url)
   const renderMessageContent = () => {
@@ -61,9 +63,11 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
     <div className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
       {/* Bot Avatar */}
       {!isUser && (
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/10 shadow-sm">
-          <Bot className="h-4.5 w-4.5" />
-        </div>
+        <img
+          src={logo}
+          alt="WebGPT Logo"
+          className="h-8 w-8 shrink-0 rounded-lg object-cover border border-slate-800 bg-slate-950/45 p-0.5 shadow-sm"
+        />
       )}
 
       <div className={`flex flex-col gap-2 max-w-[85%] ${isUser ? "items-end" : "items-start"}`}>
@@ -72,11 +76,21 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           className={`rounded-lg px-4 py-3 text-sm leading-relaxed ${
             isUser
               ? "bg-indigo-600 text-white rounded-br-none shadow-md shadow-indigo-600/10"
+              : isError
+              ? "bg-rose-500/10 border border-rose-500/25 text-rose-400 rounded-bl-none shadow-md shadow-rose-500/5"
               : "bg-slate-900/50 border border-slate-800 text-slate-100 rounded-bl-none shadow-sm"
           }`}
         >
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
+          ) : isError ? (
+            <div className="flex items-start gap-2.5 py-0.5">
+              <AlertCircle className="h-4.5 w-4.5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-rose-300">Generation Failed</p>
+                <p className="text-rose-400/90 text-xs mt-1 leading-relaxed">{message.content}</p>
+              </div>
+            </div>
           ) : message.content === "" ? (
             // Optimistic Bouncing Loader Animation
             <div className="flex items-center gap-1.5 py-1" role="status">

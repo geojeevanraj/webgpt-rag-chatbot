@@ -5,6 +5,7 @@ import { WebChatMessage } from "../types/api";
 export function useChat(jobId: string | null) {
   const [messages, setMessages] = useState<WebChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchHistory = useCallback(async () => {
@@ -24,7 +25,9 @@ export function useChat(jobId: string | null) {
   }, [jobId]);
 
   const sendMessage = useCallback(async (question: string) => {
+    if (generating) return;
     setError(null);
+    setGenerating(true);
 
     // 1. Construct optimistic User message object
     const userMsgId = `user-${Date.now()}`;
@@ -67,22 +70,22 @@ export function useChat(jobId: string | null) {
         )
       );
     } catch (err: any) {
-      setError(err.message || "Failed to query the RAG chatbot.");
       // Replace placeholder message with error details on generation failure
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === assistantPlaceholder.id
             ? {
                 ...msg,
-                content: `An error occurred while generating this answer: ${
-                  err.message || "Connection timed out."
-                }`,
+                content: err.message || "Connection timed out.",
+                isError: true,
               }
             : msg
         )
       );
+    } finally {
+      setGenerating(false);
     }
-  }, [jobId]);
+  }, [jobId, generating]);
 
   useEffect(() => {
     fetchHistory();
@@ -91,6 +94,7 @@ export function useChat(jobId: string | null) {
   return {
     messages,
     loading,
+    generating,
     error,
     sendMessage,
     clearHistory: () => setMessages([]),

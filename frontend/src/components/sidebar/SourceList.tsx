@@ -1,7 +1,6 @@
 import React from "react";
 import { SourceSummary } from "../../types/api";
 import SourceItem from "./SourceItem";
-import { LayoutGrid } from "lucide-react";
 
 interface SourceListProps {
   sources: SourceSummary[];
@@ -20,22 +19,6 @@ export default function SourceList({
 }: SourceListProps) {
   return (
     <div className="space-y-2">
-      {/* 1. Global Search Trigger Option */}
-      <button
-        type="button"
-        onClick={() => onSelectSource(null)}
-        className={`mb-2.5 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition text-left cursor-pointer ${
-          activeSourceId === null
-            ? "bg-indigo-600/15 text-indigo-400 border border-indigo-500/25"
-            : "text-slate-400 hover:bg-slate-900 hover:text-slate-200 border border-transparent"
-        }`}
-      >
-        <LayoutGrid className="h-4 w-4 shrink-0" />
-        <div className="flex-1 overflow-hidden">
-          <div className="truncate">All Sources (Global Search)</div>
-        </div>
-      </button>
-
       {/* 2. Sources Cards Feed */}
       {loading && sources.length === 0 ? (
         <div className="text-center py-6 text-xs text-slate-500">

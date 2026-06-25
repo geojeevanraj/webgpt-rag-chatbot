@@ -43,7 +43,7 @@ export default function SourceItem({
       onClick={onSelect}
       className={`group relative flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition cursor-pointer ${
         isSelected
-          ? "bg-indigo-600/10 border-indigo-500/30 text-indigo-400"
+          ? "bg-indigo-600/10 border-indigo-500/70 text-indigo-300 shadow-md shadow-indigo-600/5 ring-1 ring-indigo-500/30"
           : "bg-slate-900/35 border-slate-800/80 text-slate-300 hover:bg-slate-900 hover:text-slate-100"
       }`}
     >
@@ -65,7 +65,7 @@ export default function SourceItem({
             type="button"
             onClick={handleDelete}
             disabled={isDeleting}
-            className="opacity-0 group-hover:opacity-100 hover:text-rose-400 text-slate-500 p-0.5 rounded transition disabled:cursor-not-allowed cursor-pointer"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 hover:text-rose-400 text-slate-500 p-0.5 rounded transition disabled:cursor-not-allowed cursor-pointer"
           >
             {isDeleting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

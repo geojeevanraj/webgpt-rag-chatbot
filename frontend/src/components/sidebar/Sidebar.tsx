@@ -3,6 +3,7 @@ import { Database, Globe, X } from "lucide-react";
 import { ScrapeResponse, SourceSummary } from "../../types/api";
 import AddSourceForm from "./AddSourceForm";
 import SourceList from "./SourceList";
+import logo from "../../assets/logo.png";
 
 interface SidebarProps {
   sources: SourceSummary[];
@@ -32,9 +33,11 @@ export default function Sidebar({
       {/* App Branding Logo */}
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 px-6">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 font-bold text-white shadow-md shadow-indigo-500/20">
-            WG
-          </div>
+          <img
+            src={logo}
+            alt="WebGPT Logo"
+            className="h-9 w-9 rounded-lg object-cover shadow-md shadow-indigo-500/15"
+          />
           <div>
             <span className="font-semibold text-white tracking-wide">WebGPT</span>
             <span className="ml-1 text-xs text-indigo-400 font-semibold px-1.5 py-0.5 rounded bg-indigo-500/10">

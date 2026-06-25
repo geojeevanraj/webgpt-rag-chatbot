@@ -1,4 +1,4 @@
-import React, { useState, KeyboardEvent, ChangeEvent } from "react";
+import React, { useState, KeyboardEvent, ChangeEvent, useRef, useEffect } from "react";
 import { SendHorizontal } from "lucide-react";
 
 interface ChatInputProps {
@@ -8,12 +8,28 @@ interface ChatInputProps {
 
 export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 160)}px`;
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [input]);
 
   const handleSubmit = () => {
     const trimmed = input.trim();
     if (!trimmed || disabled) return;
     onSend(trimmed);
     setInput("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -35,21 +51,22 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
   return (
     <div className="p-4 border-t border-slate-800 bg-slate-950/20">
       <div className="max-w-3xl mx-auto">
-        <div className="relative flex items-center rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
+        <div className="relative flex items-end rounded-lg border border-slate-800 bg-slate-900/60 p-1.5 focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
           <textarea
+            ref={textareaRef}
             value={input}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question about the scraped pages..."
             disabled={disabled}
             rows={1}
-            className="w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-600 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed max-h-[160px] overflow-y-auto"
           />
           <button
             type="button"
             onClick={handleSubmit}
             disabled={disabled || !input.trim()}
-            className={`flex h-9 w-9 items-center justify-center rounded-md transition shrink-0 cursor-pointer ${
+            className={`flex h-9 w-9 items-center justify-center rounded-md transition shrink-0 cursor-pointer mb-0.5 ${
               input.trim() && !disabled
                 ? "bg-indigo-600 text-white hover:bg-indigo-500"
                 : "bg-slate-900/50 text-slate-600 cursor-not-allowed"
