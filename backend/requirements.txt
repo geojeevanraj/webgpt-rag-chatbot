@@ -21,6 +21,8 @@ Brotli==1.2.0
 # Browser rendering fallback (for JS-heavy sites)
 playwright==1.53.0
 
+# Embeddings
+sentence-transformers==4.1.0
 
 # Vector database
 chromadb==0.6.3

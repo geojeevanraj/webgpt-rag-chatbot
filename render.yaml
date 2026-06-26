@@ -3,8 +3,8 @@ services:
     name: webgpt-api
     env: python
     rootDir: backend
-    plan: free
-    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    plan: starter # ML models require starter plan minimum for RAM/CPU allocations
+    buildCommand: pip install --upgrade pip && pip install torch --extra-index-url https://download.pytorch.org/whl/cpu && pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     disk:
       name: webgpt-data
@@ -20,6 +20,6 @@ services:
       - key: CORS_ORIGINS
         value: '["http://localhost:5173", "https://webgpt-chatbot.vercel.app"]' # Replace with actual Vercel domain post-deployment
       - key: EMBEDDING_MODEL
-        value: models/gemini-embedding-001
+        value: all-MiniLM-L6-v2
       - key: GEMINI_MODEL
         value: gemini-2.5-flash

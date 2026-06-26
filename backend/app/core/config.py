@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./chroma_data"
 
     # --- Models & Multi-LLM provider config ---
-    EMBEDDING_MODEL: str = "models/gemini-embedding-001"
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
     # Configurable model fallback chain (native JSON array in .env).
