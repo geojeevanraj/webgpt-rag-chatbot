@@ -112,30 +112,43 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
                 Sources
               </h4>
               <div className="flex flex-col gap-2">
-                {uniqueCitations.map((citation, index) => (
-                  <a
-                    key={`${citation.source_url}-${index}`}
-                    href={citation.source_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group flex items-start gap-2.5 rounded border border-slate-800/80 bg-slate-950/20 p-2.5 hover:bg-slate-900/40 hover:border-slate-700/80 transition-all duration-200"
-                  >
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-slate-800 text-[10px] font-bold text-indigo-400 group-hover:bg-indigo-950/40 group-hover:text-indigo-300 transition-colors">
-                      {index + 1}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-medium text-slate-200 group-hover:text-indigo-400 transition-colors line-clamp-1">
-                          {citation.page_title}
-                        </span>
-                        <ExternalLink className="h-3.5 w-3.5 text-slate-500 opacity-0 group-hover:opacity-100 group-hover:text-indigo-400 transition-all shrink-0 ml-0.5" />
-                      </div>
-                      <span className="block text-[10px] text-slate-500 truncate mt-0.5">
-                        {citation.source_url}
+                {uniqueCitations.map((citation, index) => {
+                  // Use URL as display label when title is absent or the generic placeholder
+                  const hasTitle =
+                    citation.page_title &&
+                    citation.page_title.trim() !== "" &&
+                    citation.page_title !== "Untitled Page";
+                  const displayLabel = hasTitle
+                    ? citation.page_title
+                    : citation.source_url;
+
+                  return (
+                    <a
+                      key={`${citation.source_url}-${index}`}
+                      href={citation.source_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-start gap-2.5 rounded border border-slate-800/80 bg-slate-950/20 p-2.5 hover:bg-slate-900/40 hover:border-slate-700/80 transition-all duration-200"
+                    >
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-emerald-950/60 text-[11px] font-bold text-emerald-400 group-hover:bg-emerald-900/50 group-hover:text-emerald-300 transition-colors border border-emerald-800/40">
+                        ✓
                       </span>
-                    </div>
-                  </a>
-                ))}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-medium text-slate-200 group-hover:text-indigo-400 transition-colors line-clamp-1">
+                            {displayLabel}
+                          </span>
+                          <ExternalLink className="h-3.5 w-3.5 text-slate-500 opacity-0 group-hover:opacity-100 group-hover:text-indigo-400 transition-all shrink-0 ml-0.5" />
+                        </div>
+                        {hasTitle && (
+                          <span className="block text-[10px] text-slate-500 truncate mt-0.5">
+                            {citation.source_url}
+                          </span>
+                        )}
+                      </div>
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}

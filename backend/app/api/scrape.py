@@ -144,19 +144,82 @@ async def run_scrape_pipeline(
         async with async_session_factory() as callback_session:
             try:
                 chunk_count = 0
+                extraction_strategy = "static"
+                char_count = 0
 
                 # Process successfully scraped HTML
                 if status_str == "scraped":
-                    from app.services.chunker import chunk
+                    from app.services.chunker import chunk, clean_html
                     from app.services.vector_store import add_chunks
 
                     # Clean, extract, and chunk text content (runs synchronously)
                     chunks = chunk(html, url, title, settings.CHUNK_SIZE, settings.CHUNK_OVERLAP)
 
+                    # Measure extracted content quality
+                    cleaned_text = clean_html(html)
+                    char_count = len(cleaned_text)
+
+                    # Browser rendering fallback: if static extraction produced
+                    # insufficient content and browser rendering is enabled
+                    if (
+                        not chunks
+                        and settings.BROWSER_RENDER_ENABLED
+                        and char_count < settings.MIN_CONTENT_LENGTH
+                    ):
+                        extraction_strategy = "browser_render"
+                        logger.info(
+                            "[%s] Static extraction insufficient for %s "
+                            "(chars=%d, threshold=%d). Attempting browser render...",
+                            job_id, url, char_count, settings.MIN_CONTENT_LENGTH
+                        )
+                        try:
+                            from app.services.browser_renderer import render_page
+                            rendered_html = await render_page(
+                                url,
+                                timeout=settings.BROWSER_RENDER_TIMEOUT
+                            )
+
+                            if rendered_html:
+                                # Re-extract and chunk from rendered DOM
+                                chunks = chunk(
+                                    rendered_html, url, title,
+                                    settings.CHUNK_SIZE, settings.CHUNK_OVERLAP
+                                )
+                                rendered_text = clean_html(rendered_html)
+                                char_count = len(rendered_text)
+
+                                # Try to extract a better title from rendered HTML
+                                if not title and rendered_html:
+                                    from app.services.scraper import extract_title
+                                    title = extract_title(rendered_html)
+
+                                logger.info(
+                                    "[%s] Browser render for %s produced %d chars, %d chunks",
+                                    job_id, url, char_count, len(chunks) if chunks else 0
+                                )
+                            else:
+                                logger.warning(
+                                    "[%s] Browser render returned no HTML for %s",
+                                    job_id, url
+                                )
+                        except Exception as render_err:
+                            logger.warning(
+                                "[%s] Browser render failed for %s: %s",
+                                job_id, url, render_err
+                            )
+
                     if chunks:
                         chunk_count = len(chunks)
                         # Embed and index text vectors (runs CPU-heavy inference inside a thread pool)
                         await asyncio.to_thread(add_chunks, job_id, chunks)
+
+                # Structured diagnostic log
+                diag_result = "SUCCESS" if chunk_count > 0 else ("FAILED" if status_str == "failed" else "NO_CONTENT")
+                logger.info(
+                    "[%s] DIAGNOSTIC | URL: %s | Strategy: %s | Chars: %d | Chunks: %d | Result: %s%s",
+                    job_id, url, extraction_strategy, char_count, chunk_count, diag_result,
+                    f" | Error: {error_message}" if error_message else ""
+                )
 
                 # Persist ScrapedPage progress immediately
                 db_page = ScrapedPage(
@@ -179,14 +242,31 @@ async def run_scrape_pipeline(
                     if status_str == "scraped":
                         job.pages_scraped += 1
                         job.total_chunks += chunk_count
+                        # Extract and save favicon on seed page scrape
+                        if depth == 0:
+                            try:
+                                from bs4 import BeautifulSoup
+                                from urllib.parse import urljoin
+                                soup = BeautifulSoup(html, "lxml")
+                                favicon_link = None
+                                for link in soup.find_all("link", rel=True):
+                                    rel = [r.lower() for r in link["rel"]]
+                                    if "icon" in rel or "shortcut icon" in rel or "apple-touch-icon" in rel:
+                                        favicon_link = link.get("href")
+                                        if favicon_link:
+                                            break
+                                if favicon_link:
+                                    job.favicon_url = urljoin(url, favicon_link)
+                            except Exception as favicon_err:
+                                logger.warning("[%s] Failed to extract favicon: %s", job_id, favicon_err)
                     else:
                         job.pages_failed += 1
                     job.updated_at = datetime.now(timezone.utc)
 
                 await callback_session.commit()
                 logger.info(
-                    "[%s] Crawled and indexed: %s (status=%s, chunks=%d)",
-                    job_id, url, status_str, chunk_count
+                    "[%s] Crawled and indexed: %s (status=%s, chunks=%d, strategy=%s)",
+                    job_id, url, status_str, chunk_count, extraction_strategy
                 )
             except Exception as callback_err:
                 logger.error(

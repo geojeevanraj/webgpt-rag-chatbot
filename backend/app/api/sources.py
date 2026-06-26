@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from app.core.database import get_db
 from app.models.database import ScrapeJob, ScrapedPage
-from app.models.schemas import ErrorResponse, PageInfo, SourcePagesResponse, SourceSummary
+from app.models.schemas import ErrorResponse, PageInfo, SourcePagesResponse, SourceSummary, SourcePageInfo
 
 # Configure module-level logger
 logger = logging.getLogger(__name__)
@@ -68,8 +68,10 @@ async def list_sources(
 
     try:
         # Query scrape jobs ordered by created_at DESC with pagination limits
+        from sqlalchemy.orm import selectinload
         stmt = (
             select(ScrapeJob)
+            .options(selectinload(ScrapeJob.pages))
             .order_by(ScrapeJob.created_at.desc())
             .limit(limit)
             .offset(offset)
@@ -85,7 +87,9 @@ async def list_sources(
                 status=job.status,
                 pages_scraped=job.pages_scraped,
                 total_chunks=job.total_chunks,
-                created_at=job.created_at
+                created_at=job.created_at,
+                title=next((p.title for p in job.pages if p.depth == 0), None),
+                favicon_url=getattr(job, "favicon_url", None)
             )
             for job in jobs
         ]
@@ -151,16 +155,16 @@ async def get_source_details(
 @router.get(
     "/sources/{job_id}/pages",
     response_model=SourcePagesResponse,
-    include_in_schema=False
+    include_in_schema=True,
+    summary="Retrieve all successfully indexed pages for a source"
 )
-async def get_source_pages_legacy(
+async def get_source_pages(
     job_id: str,
     db: AsyncSession = Depends(get_db)
 ) -> SourcePagesResponse:
-    """Fallback route supporting legacy Phase 1 schemas.
+    """Retrieve details of successfully crawled and indexed pages for a scrape job."""
+    logger.info("Retrieving scraped pages for source: %s", job_id)
 
-    Resolves lists of full PageInfo objects under the legacy '/pages' suffix path.
-    """
     # 1. Verify parent job exists
     stmt = select(ScrapeJob).where(ScrapeJob.id == job_id)
     res = await db.execute(stmt)
@@ -172,23 +176,23 @@ async def get_source_pages_legacy(
             detail=f"Source job context '{job_id}' not found."
         )
 
-    # 2. Query scraped pages
+    # 2. Query scraped pages filtering for status == "scraped"
     pages_stmt = (
         select(ScrapedPage)
         .where(ScrapedPage.job_id == job_id)
+        .where(ScrapedPage.status == "scraped")
         .order_by(ScrapedPage.depth.asc(), ScrapedPage.scraped_at.asc())
     )
     pages_res = await db.execute(pages_stmt)
     db_pages = pages_res.scalars().all()
 
     pages_info = [
-        PageInfo(
+        SourcePageInfo(
+            id=p.id,
             url=p.url,
             title=p.title,
             depth=p.depth,
-            chunk_count=p.chunk_count,
-            status=p.status,
-            error_message=p.error_message
+            chunk_count=p.chunk_count
         )
         for p in db_pages
     ]

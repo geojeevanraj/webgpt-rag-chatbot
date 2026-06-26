@@ -76,6 +76,8 @@ export interface SourceSummary {
   pages_scraped: number;
   total_chunks: number;
   created_at: string;
+  title: string | null;
+  favicon_url: string | null;
 }
 
 export interface PageSummary {
@@ -94,6 +96,18 @@ export interface SourceDetailResponse {
 export interface ApiError {
   status: number;
   detail: string;
+}
+
+export interface SourcePageInfo {
+  id: string;
+  url: string;
+  title: string;
+  depth: number;
+  chunk_count: number;
+}
+
+export interface SourcePagesResponse {
+  pages: SourcePageInfo[];
 }
 
 

@@ -16,21 +16,24 @@ from bs4 import BeautifulSoup
 # Configure module-level logger
 logger = logging.getLogger(__name__)
 
-# Standard set of binary/non-content file extensions or assets to ignore
-# (if any leak into raw html processing, though typically handled by scraper)
+# Narrow boilerplate patterns — only match genuinely non-content elements.
+# Deliberately excludes broad terms like "widget", "banner", "sidebar", "header"
+# which many real websites use for legitimate content containers.
 BOILERPLATE_PATTERNS: list[str] = [
-    "nav", "navbar", "footer", "sidebar", "menu", "cookie",
-    "banner", "ad", "advertisement", "popup", "modal", "widget",
-    "social", "share", "header"
+    "cookie-banner", "cookie-consent", "cookie-notice", "cookiebar",
+    "ad-container", "ad-slot", "ad-wrapper", "advertisement",
+    "popup-overlay", "modal-overlay", "gdpr",
 ]
 
 
 def clean_html(html_content: str) -> str:
     """Parse raw HTML, remove semantic boilerplate and metadata, and extract clean text.
 
-    Boilerplate removed includes scripts, styles, iframes, SVGs, nav, headers, footers,
-    and elements with matching classes/IDs (like sidebars, ads, popups).
-    If a <main> or <article> tag is present, text is extracted only from it.
+    Boilerplate removed includes scripts, styles, iframes, SVGs, and nav/footer.
+    Elements are matched by narrow class/ID patterns targeting only genuinely
+    non-content elements (cookie banners, ad containers, modal overlays).
+    If a <main>, <article>, or [role="main"] tag is present, text is extracted
+    only from that container.
 
     Args:
         html_content: The raw HTML string.
@@ -42,11 +45,12 @@ def clean_html(html_content: str) -> str:
     soup = BeautifulSoup(html_content, "lxml")
 
     # 1. Decompose entirely useless semantic tags
-    unwanted_tags = ["script", "style", "noscript", "iframe", "svg", "nav", "footer", "header"]
+    #    NOTE: <header> is intentionally NOT removed — many sites place real content there.
+    unwanted_tags = ["script", "style", "noscript", "iframe", "svg", "nav", "footer"]
     for tag in soup.find_all(unwanted_tags):
         tag.decompose()
 
-    # 2. Decompose common boilerplate elements by class and ID
+    # 2. Decompose genuine boilerplate elements by class and ID (narrow matching)
     def is_boilerplate(tag: Any) -> bool:
         # Check ID attribute
         tag_id = tag.get("id")
@@ -68,9 +72,24 @@ def clean_html(html_content: str) -> str:
     for tag in soup.find_all(is_boilerplate):
         tag.decompose()
 
-    # 3. Extract text from primary content tags, falling back to body or html root
-    content_tag = soup.find("main") or soup.find("article") or soup.find("body") or soup
-    text = content_tag.get_text(separator="\n", strip=True)
+    # 3. Extract text from primary content tags, falling back to body or html root.
+    #    Added [role="main"] as a content container candidate.
+    main_tag = (
+        soup.find("main")
+        or soup.find("article")
+        or soup.find(attrs={"role": "main"})
+    )
+    if main_tag:
+        text = main_tag.get_text(separator="\n", strip=True)
+        # Prepend header content if a <header> tag exists outside the main content container.
+        header_tag = soup.find("header")
+        if header_tag and header_tag not in main_tag.find_all("header"):
+            header_text = header_tag.get_text(separator="\n", strip=True)
+            if header_text:
+                text = header_text + "\n\n" + text
+    else:
+        content_tag = soup.find("body") or soup
+        text = content_tag.get_text(separator="\n", strip=True)
 
     # 4. Clean formatting and whitespace
     # Collapse 3 or more newlines into exactly 2 (preserves paragraph breaks)

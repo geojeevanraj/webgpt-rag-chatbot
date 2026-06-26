@@ -22,6 +22,7 @@ export default function App() {
 
   // 2. Custom hooks: load and poll sources
   const { sources, loading, error, refreshSources, deleteSource } = useSources();
+  const activeSource = sources.find((s) => s.job_id === activeSourceId) || null;
   useScrapePolling(sources, refreshSources);
 
   // Helper to add toast messages that fade out automatically
@@ -123,6 +124,7 @@ export default function App() {
           {/* RAG Chat interface container */}
           <ChatWindow
             activeSourceId={activeSourceId}
+            activeSource={activeSource}
             onScrapeSuccess={handleScrapeSuccess}
           />
         </div>

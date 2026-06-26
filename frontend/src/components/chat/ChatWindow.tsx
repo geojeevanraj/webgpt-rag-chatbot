@@ -1,20 +1,79 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useChat } from "../../hooks/useChat";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import LoadingSpinner from "../common/LoadingSpinner";
-import { Bot, MessageSquare } from "lucide-react";
+import { Bot, MessageSquare, Globe } from "lucide-react";
 import AddSourceForm from "../sidebar/AddSourceForm";
 import logo from "../../assets/logo.png";
+import { SourceSummary, SourcePageInfo } from "../../types/api";
+import { api } from "../../services/api";
+import KnowledgeExplorer from "./KnowledgeExplorer";
 
 
 interface ChatWindowProps {
   activeSourceId: string | null;
+  activeSource?: SourceSummary | null;
   onScrapeSuccess?: (job: any) => void;
 }
 
-export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWindowProps) {
+export default function ChatWindow({
+  activeSourceId,
+  activeSource,
+  onScrapeSuccess,
+}: ChatWindowProps) {
   const { messages, loading, generating, error, sendMessage } = useChat(activeSourceId);
+
+  // Calculate favicon URL with fallbacks
+  const faviconUrl = useMemo(() => {
+    if (!activeSource) return null;
+    if (activeSource.favicon_url) return activeSource.favicon_url;
+    try {
+      const url = new URL(activeSource.seed_url);
+      return `${url.origin}/favicon.ico`;
+    } catch {
+      return null;
+    }
+  }, [activeSource]);
+
+  // Cache fetched pages per source in React state
+  const [pagesCache, setPagesCache] = useState<Record<string, SourcePageInfo[]>>({});
+  const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+  const [loadingPages, setLoadingPages] = useState(false);
+  const [pagesError, setPagesError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isExplorerOpen || !activeSourceId) return;
+
+    // If already cached, don't fetch again
+    if (pagesCache[activeSourceId]) {
+      setPagesError(null);
+      return;
+    }
+
+    const fetchPages = async () => {
+      setLoadingPages(true);
+      setPagesError(null);
+      try {
+        const response = await api.getSourcePages(activeSourceId);
+        setPagesCache((prev) => ({
+          ...prev,
+          [activeSourceId]: response.pages,
+        }));
+      } catch (err: any) {
+        setPagesError(err.message || "Failed to load source pages.");
+      } finally {
+        setLoadingPages(false);
+      }
+    };
+
+    fetchPages();
+  }, [activeSourceId, isExplorerOpen]);
+
+  // Close explorer when source changes to avoid showing stale drawer
+  useEffect(() => {
+    setIsExplorerOpen(false);
+  }, [activeSourceId]);
   // Ref to the scrollable message container — we scroll it directly so the browser
   // window never scrolls. scrollIntoView() is intentionally avoided because it
   // walks up the ancestor chain and can scroll the <body> when layout is in flux
@@ -68,19 +127,62 @@ export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWind
       
       {/* Dynamic Header */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-800 bg-slate-950/50 px-6 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500/10 text-indigo-400">
-            <MessageSquare className="h-4.5 w-4.5" />
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Website favicon with fallback */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-slate-800 bg-slate-900/50 text-slate-400 overflow-hidden shadow-inner relative">
+            {faviconUrl ? (
+              <img
+                src={faviconUrl}
+                alt="Favicon"
+                className="h-5 w-5 object-contain"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.style.display = "none";
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallbackSvg = parent.querySelector(".fallback-globe");
+                    if (fallbackSvg) {
+                      fallbackSvg.classList.remove("hidden");
+                    }
+                  }
+                }}
+              />
+            ) : null}
+            <Globe className={`h-5 w-5 text-slate-500 fallback-globe ${faviconUrl ? "hidden" : ""}`} />
           </div>
-          <div>
-            <h1 className="text-sm font-semibold text-slate-100">
-              Website Scraped Context
-            </h1>
-            <p className="text-[10px] text-slate-500 font-medium">
-              Source ID: {activeSourceId}
-            </p>
+
+          {/* Website Details & Metadata */}
+          <div className="min-w-0 flex flex-col justify-center">
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className="text-sm font-bold text-slate-100 truncate cursor-help hover:text-indigo-400 transition"
+                title={activeSource ? activeSource.seed_url : ""}
+              >
+                {activeSource ? activeSource.domain : "Global Search"}
+              </span>
+            </div>
+            {activeSource && activeSource.title && (
+              <span className="text-[11px] text-slate-400 font-semibold truncate leading-tight" title={activeSource.title}>
+                {activeSource.title}
+              </span>
+            )}
+            {activeSource && (
+              <p className="text-[10px] text-slate-500 font-bold tracking-wide mt-0.5 leading-none">
+                {activeSource.pages_scraped} {activeSource.pages_scraped === 1 ? "Page" : "Pages"} • {activeSource.total_chunks} Chunks Indexed
+              </p>
+            )}
           </div>
         </div>
+
+        {activeSource && activeSource.status === "completed" && (
+          <button
+            type="button"
+            onClick={() => setIsExplorerOpen(true)}
+            className="flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-900/60 px-3.5 py-1.5 text-xs text-slate-300 hover:border-indigo-500/40 hover:bg-indigo-600/5 hover:text-indigo-400 transition cursor-pointer font-semibold shadow-sm shrink-0"
+          >
+            📚 Knowledge Explorer
+          </button>
+        )}
       </header>
 
       {/* Main Conversation Thread Feed — this is the ONLY scrollable container */}
@@ -142,6 +244,17 @@ export default function ChatWindow({ activeSourceId, onScrapeSuccess }: ChatWind
 
       {/* Fixed bottom textarea chat input card */}
       <ChatInput onSend={sendMessage} disabled={generating || loading} />
+
+      {/* Slide-over Knowledge Explorer Drawer */}
+      {isExplorerOpen && activeSource && (
+        <KnowledgeExplorer
+          activeSource={activeSource}
+          pages={pagesCache[activeSource.job_id] || []}
+          loading={loadingPages}
+          error={pagesError}
+          onClose={() => setIsExplorerOpen(false)}
+        />
+      )}
     </div>
   );
 }

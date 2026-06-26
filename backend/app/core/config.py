@@ -5,11 +5,26 @@ and environment variables. All settings have sensible defaults.
 """
 
 import json
+import logging
 import os
 import sys
+from typing import Any
 from urllib.parse import urlparse
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+# Default model chain — used when the configured chain is empty or malformed.
+# Order reflects quality-first priority, progressively falling back to lighter models.
+DEFAULT_MODEL_CHAIN: list[str] = [
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-3-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash-lite",
+]
 
 
 class Settings(BaseSettings):
@@ -39,10 +54,13 @@ class Settings(BaseSettings):
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     GEMINI_MODEL: str = "gemini-2.5-flash"
 
-    PRIMARY_PROVIDER: str = "gemini"
-    PRIMARY_MODEL: str = "gemini-2.5-flash"
-    FALLBACK_MODEL_1: str = "gemini-2.5-flash-lite"
-    FALLBACK_MODEL_2: str = "gemini-1.5-flash"
+    # Configurable model fallback chain (native JSON array in .env).
+    # Order is the single source of truth for priority.
+    GEMINI_MODEL_CHAIN: list[str] = DEFAULT_MODEL_CHAIN.copy()
+
+    # Cooldown duration (seconds) for models that fail with transient errors.
+    GEMINI_COOLDOWN_SECONDS: float = 60.0
+
     MAX_RETRIES: int = 3
     RETRY_BACKOFF_SECONDS: float = 2.0
 
@@ -56,12 +74,47 @@ class Settings(BaseSettings):
 
     # --- Scraping ---
     SCRAPE_DELAY_SECONDS: float = 1.0
-    SCRAPE_TIMEOUT_SECONDS: int = 10
+    SCRAPE_TIMEOUT_SECONDS: int = 20
     SCRAPE_MAX_DEPTH: int = 2
     SCRAPE_MAX_PAGES: int = 50
 
+    # --- Browser Rendering Fallback ---
+    BROWSER_RENDER_ENABLED: bool = True
+    BROWSER_RENDER_TIMEOUT: int = 30
+    MIN_CONTENT_LENGTH: int = 100
+
     # --- CORS (String-based configuration to prevent fragile Pydantic JSON decoding errors) ---
-    CORS_ORIGINS: str = "http://localhost:5173"
+    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:3000"
+
+
+    @field_validator("GEMINI_MODEL_CHAIN", mode="before")
+    @classmethod
+    def parse_model_chain(cls, v: Any) -> list[str]:
+        """Parse GEMINI_MODEL_CHAIN from env.
+
+        Accepts a native JSON array string (e.g. '["model-a","model-b"]').
+        Falls back to the default chain on any parsing failure.
+        """
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return DEFAULT_MODEL_CHAIN.copy()
+            try:
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    return [str(item) for item in parsed]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+            # If it's not valid JSON, fall back to defaults
+            logger.warning(
+                "GEMINI_MODEL_CHAIN value is not a valid JSON array: '%s'. "
+                "Using default model chain.",
+                v,
+            )
+            return DEFAULT_MODEL_CHAIN.copy()
+        return DEFAULT_MODEL_CHAIN.copy()
 
 
 # Module-level singleton — imported by other modules as `from app.core.config import settings`.
@@ -71,8 +124,9 @@ settings = Settings()
 def validate_startup() -> None:
     """Execute defensive validation checks on startup settings.
 
-    Ensures that missing API keys, unwritable database/vector paths, and invalid
-    CORS configuration strings are caught at launch with clear errors printed to stderr.
+    Ensures that missing API keys, unwritable database/vector paths, invalid
+    CORS configuration strings, and malformed model chains are caught at launch
+    with clear errors printed to stderr.
     """
     errors = []
 
@@ -144,6 +198,30 @@ def validate_startup() -> None:
                     "Origins must use http/https scheme and specify a host (e.g., https://example.com)."
                 )
 
+    # 5. Validate and clean GEMINI_MODEL_CHAIN
+    raw_chain = settings.GEMINI_MODEL_CHAIN
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for model_name in raw_chain:
+        name = model_name.strip() if isinstance(model_name, str) else ""
+        if not name:
+            continue
+        if name in seen:
+            logger.warning("Duplicate model '%s' removed from GEMINI_MODEL_CHAIN.", name)
+            continue
+        seen.add(name)
+        cleaned.append(name)
+
+    if not cleaned:
+        logger.warning(
+            "GEMINI_MODEL_CHAIN is empty after validation. Falling back to default chain."
+        )
+        cleaned = DEFAULT_MODEL_CHAIN.copy()
+
+    # Apply the cleaned chain back to settings (Pydantic v2 allows mutation)
+    settings.GEMINI_MODEL_CHAIN = cleaned
+    logger.info("Final validated GEMINI_MODEL_CHAIN: %s", cleaned)
+
     if errors:
         print("\n" + "=" * 80, file=sys.stderr)
         print("CRITICAL CONFIGURATION ERROR: Backend application startup failed.", file=sys.stderr)
@@ -156,4 +234,3 @@ def validate_startup() -> None:
 
 # Execute startup validations immediately on configuration import
 validate_startup()
-

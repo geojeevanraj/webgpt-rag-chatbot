@@ -227,15 +227,34 @@ async def scrape(
     # Configure aiohttp connection limits and timeouts based on core settings
     timeout = aiohttp.ClientTimeout(
         total=float(settings.SCRAPE_TIMEOUT_SECONDS),
-        connect=5.0
+        connect=10.0
     )
+
+    # Realistic browser headers to avoid being blocked or served degraded content
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/131.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+    }
 
     logger.info(
         "[%s] Starting crawl for %s (max_depth=%d, max_pages=%d)",
         job_id, seed_url, max_depth, max_pages
     )
 
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    # Use a cookie jar to handle session cookies and redirects properly
+    cookie_jar = aiohttp.CookieJar()
+
+    async with aiohttp.ClientSession(
+        timeout=timeout,
+        headers=headers,
+        cookie_jar=cookie_jar,
+    ) as session:
         # Fetch robots.txt first to respect crawling policies
         robot_parser = await fetch_robots_txt(session, seed_url)
 

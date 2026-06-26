@@ -55,6 +55,7 @@ class ScrapeJob(Base):
     pages_failed: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    favicon_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )

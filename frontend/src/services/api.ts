@@ -7,6 +7,7 @@ import {
   SourceDetailResponse,
   SourceSummary,
   WebChatHistoryResponse,
+  SourcePagesResponse,
 } from "../types/api";
 
 /**
@@ -146,5 +147,9 @@ export const api = {
   getChatHistory: (jobId: string) =>
     request<WebChatHistoryResponse>(`/chat/history/${jobId}`),
 
-
+  /**
+   * Retrieve successfully crawled pages for a specific source context.
+   */
+  getSourcePages: (jobId: string) =>
+    request<SourcePagesResponse>(`/sources/${jobId}/pages`),
 };

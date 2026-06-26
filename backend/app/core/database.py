@@ -84,8 +84,14 @@ async def init_db() -> None:
     """
     # Import models so SQLAlchemy registers them with Base.metadata.
     import app.models.database as _models  # noqa: F401
+    from sqlalchemy import text
 
     async with engine.begin() as conn:
         await conn.run_sync(_models.Base.metadata.create_all)
+        try:
+            await conn.execute(text("ALTER TABLE scrape_jobs ADD COLUMN favicon_url VARCHAR(2048);"))
+            logger.info("Dynamically added favicon_url column to scrape_jobs table.")
+        except Exception as e:
+            logger.warning("Failed to dynamically add favicon_url (expected if already exists): %s", e)
 
     logger.info("Database tables created successfully.")

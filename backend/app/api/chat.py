@@ -105,7 +105,46 @@ async def ask_question(
             detail="Question cannot be empty or whitespace-only."
         )
 
-    # 1. Validate ScrapeJob context if job_id is provided
+    # 1. Conversation routing — short-circuit common intents before hitting RAG
+    from app.services.conversation_router import detect_intent, build_response as build_conv_response
+
+    intent = detect_intent(question_str)
+    if intent:
+        # Resolve source context so the greeting can mention the active site
+        source_title: str | None = None
+        source_url: str | None = None
+        if request.job_id is not None:
+            try:
+                stmt_ctx = select(ScrapeJob).where(ScrapeJob.id == request.job_id)
+                res_ctx = await db.execute(stmt_ctx)
+                job_ctx = res_ctx.scalar_one_or_none()
+                if job_ctx:
+                    source_title = job_ctx.domain or None
+                    source_url = job_ctx.seed_url or None
+            except Exception:
+                pass  # Non-fatal; greeting still works without context
+
+        conv_answer = build_conv_response(
+            intent,
+            source_title=source_title,
+            source_url=source_url,
+        )
+        logger.info(
+            "Conversation router matched intent '%s' — skipping RAG pipeline.", intent
+        )
+
+        # Persist to chat history (no citations for conversational replies)
+        try:
+            db.add(ChatMessage(job_id=request.job_id, role="user", content=question_str))
+            db.add(ChatMessage(job_id=request.job_id, role="assistant", content=conv_answer, sources="[]"))
+            await db.flush()
+        except Exception as hist_err:
+            logger.warning("Failed to persist conversational message history: %s", hist_err)
+            await db.rollback()
+
+        return ChatWebResponse(answer=conv_answer, citations=[])
+
+    # 2. Validate ScrapeJob context if job_id is provided
     if request.job_id is not None:
         stmt = select(ScrapeJob).where(ScrapeJob.id == request.job_id)
         res = await db.execute(stmt)
@@ -124,7 +163,7 @@ async def ask_question(
 
     logger.info("Executing RAG pipeline for query: '%s'", question_str)
 
-    # 2. Invoke RAG Generation pipeline
+    # 3. Invoke RAG Generation pipeline
     try:
         from app.services.rag import generate_answer
         # generate_answer is now an async coroutine; await it directly
@@ -137,7 +176,7 @@ async def ask_question(
             detail=str(e)
         )
 
-    # 3. Persist history in a single atomic database transaction
+    # 4. Persist history in a single atomic database transaction
     try:
         # User message
         user_msg = ChatMessage(
@@ -164,7 +203,7 @@ async def ask_question(
             detail="Failed to save chat history to database."
         )
 
-    # 4. Map citations results to schema format
+    # 5. Map citations results to schema format
     web_citations = [
         CitationInfo(
             source_url=c["source_url"],

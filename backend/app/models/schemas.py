@@ -161,6 +161,8 @@ class SourceSummary(BaseModel):
     pages_scraped: int
     total_chunks: int
     created_at: datetime
+    title: str | None = None
+    favicon_url: str | None = None
 
 
 class SourceListResponse(BaseModel):
@@ -169,10 +171,20 @@ class SourceListResponse(BaseModel):
     jobs: list[SourceSummary] = Field(default_factory=list)
 
 
+class SourcePageInfo(BaseModel):
+    """Details of a successfully indexed page for the Knowledge Explorer."""
+
+    id: str = Field(..., description="The unique page ID.")
+    url: str = Field(..., description="The page URL.")
+    title: str = Field(..., description="The page title.")
+    depth: int = Field(..., description="The depth of the crawl.")
+    chunk_count: int = Field(..., description="Number of chunks indexed.")
+
+
 class SourcePagesResponse(BaseModel):
     """Response body for ``GET /api/sources/{job_id}/pages``."""
 
-    pages: list[PageInfo] = Field(default_factory=list)
+    pages: list[SourcePageInfo] = Field(default_factory=list)
 
 
 # =============================================================================

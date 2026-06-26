@@ -46,10 +46,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     logger.info("Database initialized.")
     logger.info("Gemini API key loaded: %s", bool(settings.GEMINI_API_KEY.strip()))
-    logger.info("Gemini model: %s", settings.GEMINI_MODEL)
+    logger.info("Gemini model chain: %s", settings.GEMINI_MODEL_CHAIN)
+    logger.info("Gemini cooldown: %.0fs", settings.GEMINI_COOLDOWN_SECONDS)
     logger.info(
-        "Configuration: gemini_model=%s, embedding_model=%s, chunk_size=%d, chunk_overlap=%d",
-        settings.GEMINI_MODEL,
+        "Configuration: embedding_model=%s, chunk_size=%d, chunk_overlap=%d",
         settings.EMBEDDING_MODEL,
         settings.CHUNK_SIZE,
         settings.CHUNK_OVERLAP,

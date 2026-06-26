@@ -32,3 +32,7 @@ Thumbs.db
 # Node (frontend - future)
 node_modules/
 frontend/dist/
+
+# Temporary / Scratch
+scratch/
+backend/scratch/

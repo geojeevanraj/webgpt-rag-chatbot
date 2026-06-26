@@ -36,7 +36,9 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
     // Send message on Enter without shift key pressed
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      if (!disabled) {
+        handleSubmit();
+      }
     }
   };
 
@@ -58,9 +60,11 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             placeholder="Ask a question about the scraped pages..."
-            disabled={disabled}
+            readOnly={disabled}
             rows={1}
-            className="w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed max-h-[160px] overflow-y-auto"
+            className={`w-full resize-none bg-transparent px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:outline-none max-h-[160px] overflow-y-auto ${
+              disabled ? "opacity-50 cursor-not-allowed select-none" : ""
+            }`}
           />
           <button
             type="button"
