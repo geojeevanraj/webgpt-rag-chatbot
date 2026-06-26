@@ -9,12 +9,60 @@ interface MessageBubbleProps {
   onRegenerate?: () => Promise<void>;
 }
 
-export default function MessageBubble({ message, onRegenerate }: MessageBubbleProps) {
+// Recursive helper to find and replace the trailing ▌ cursor with styling
+const injectCursor = (node: React.ReactNode, cursorClass: string): React.ReactNode => {
+  if (typeof node === "string") {
+    if (node.endsWith("▌")) {
+      return (
+        <>
+          {node.slice(0, -1)}
+          <span className={cursorClass}>▌</span>
+        </>
+      );
+    }
+    return node;
+  }
+
+  if (Array.isArray(node)) {
+    const children = [...node];
+    if (children.length > 0) {
+      const lastIndex = children.length - 1;
+      children[lastIndex] = injectCursor(children[lastIndex], cursorClass);
+      return children;
+    }
+  }
+
+  if (React.isValidElement(node)) {
+    const element = node as React.ReactElement<{ children?: React.ReactNode }>;
+    const children = React.Children.toArray(element.props.children) as React.ReactNode[];
+    if (children.length > 0) {
+      const lastIndex = children.length - 1;
+      children[lastIndex] = injectCursor(children[lastIndex], cursorClass);
+      return React.cloneElement(element, { ...element.props }, ...children);
+    }
+  }
+
+  return node;
+};
+
+const MessageBubble = React.memo(function MessageBubble({ message, onRegenerate }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const isError = !!message.isError;
 
   const [liked, setLiked] = React.useState(false);
   const [disliked, setDisliked] = React.useState(false);
+  const [showThinking, setShowThinking] = React.useState(false);
+
+  React.useEffect(() => {
+    if (message.isStreaming && message.content === "") {
+      const timer = setTimeout(() => {
+        setShowThinking(true);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowThinking(false);
+    }
+  }, [message.isStreaming, message.content]);
 
   const handleLike = () => {
     setLiked(!liked);
@@ -42,6 +90,16 @@ export default function MessageBubble({ message, onRegenerate }: MessageBubblePr
           self.findIndex((t) => t.source_url === c.source_url) === index
       )
     : [];
+
+  const showCursor = message.isStreaming || message.streamState === "completed";
+  const cursorClass = message.isStreaming ? "streaming-cursor active" : "streaming-cursor completed";
+  const rawMarkdown = message.content + (showCursor ? "▌" : "");
+
+  const createCursorInjector = (Tag: any) => {
+    return ({ children, ...props }: any) => (
+      <Tag {...props}>{injectCursor(children, cursorClass)}</Tag>
+    );
+  };
 
   return (
     <div className={`flex gap-4 ${isUser ? "justify-end" : "justify-start"}`}>
@@ -76,18 +134,35 @@ export default function MessageBubble({ message, onRegenerate }: MessageBubblePr
               </div>
             </div>
           ) : message.content === "" ? (
-            // Optimistic Bouncing Loader Animation
-            <div className="flex items-center gap-1.5 py-1 min-h-[2rem]" role="status">
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
-              <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
-              <span className="sr-only">Typing...</span>
+            // Optimistic Bouncing Loader / Thinking Animation
+            <div className="flex flex-col gap-1.5 py-1 min-h-[2rem]" role="status">
+              <div className="flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
+                {message.statusText ? (
+                  <span className="text-xs text-text-muted font-medium font-inter">{message.statusText}</span>
+                ) : (
+                  <span className="sr-only">Typing...</span>
+                )}
+              </div>
+              {!message.statusText && showThinking && (
+                <span className="text-xs text-text-muted italic animate-pulse">Thinking...</span>
+              )}
             </div>
           ) : (
-            // Render markdown content safely
+            // Render markdown content safely with recursive cursor support
             <article className="prose prose-invert max-w-none text-text-primary prose-sm prose-p:leading-relaxed prose-pre:bg-surface-background prose-pre:border prose-pre:border-border-subtle">
               <Markdown
                 components={{
+                  p: createCursorInjector("p"),
+                  li: createCursorInjector("li"),
+                  h1: createCursorInjector("h1"),
+                  h2: createCursorInjector("h2"),
+                  h3: createCursorInjector("h3"),
+                  h4: createCursorInjector("h4"),
+                  strong: createCursorInjector("strong"),
+                  em: createCursorInjector("em"),
                   a: ({ href, children, ...props }) => {
                     const isCitationLink = typeof children === "string" && /^\d+$/.test(children);
                     
@@ -113,19 +188,19 @@ export default function MessageBubble({ message, onRegenerate }: MessageBubblePr
                         className="text-accent-blue hover:text-accent-blue/80 underline cursor-pointer transition-colors duration-[--transition-fast]"
                         {...props}
                       >
-                        {children}
+                        {injectCursor(children, cursorClass)}
                       </a>
                     );
                   }
                 }}
               >
-                {message.content}
+                {rawMarkdown}
               </Markdown>
             </article>
           )}
 
           {/* Action Bar (Assistant Only) */}
-          {!isUser && message.content !== "" && (
+          {!isUser && message.content !== "" && !message.isStreaming && (
             <div className="flex items-center gap-2 mt-3 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity duration-200 ease-out pointer-events-auto">
               <button
                 type="button"
@@ -241,6 +316,14 @@ export default function MessageBubble({ message, onRegenerate }: MessageBubblePr
               </div>
             </div>
           )}
+
+          {/* Interruption Status Banner */}
+          {message.streamState === "interrupted" && (
+            <div className="mt-4 flex items-center gap-1.5 text-[10px] text-amber-500 font-semibold font-inter">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+              <span>Connection interrupted • Partial response preserved</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -252,4 +335,14 @@ export default function MessageBubble({ message, onRegenerate }: MessageBubblePr
       )}
     </div>
   );
-}
+}, (prevProps, nextProps) => {
+  return (
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.isStreaming === nextProps.message.isStreaming &&
+    prevProps.message.streamState === nextProps.message.streamState &&
+    prevProps.message.statusText === nextProps.message.statusText &&
+    prevProps.message.citations?.length === nextProps.message.citations?.length
+  );
+});
+
+export default MessageBubble;

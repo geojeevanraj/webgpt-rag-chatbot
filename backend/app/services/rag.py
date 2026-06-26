@@ -561,3 +561,102 @@ def _log_timing_report(timing: dict[str, Any]) -> None:
     lines.append(f"  LLM Time:                   {timing.get('llm_time', 0)}s")
     lines.append(f"  Total Request:              {timing['total_time']}s")
     logger.info("\n".join(lines))
+
+
+async def generate_answer_stream(
+    job_id: Union[str, None],
+    question: str,
+    request_id: str = "",
+):
+    """Async generator implementing the full RAG pipeline in streaming mode.
+
+    Yields dictionaries with an ``"event"`` key and accompanying ``"data"``:
+
+    - ``{"event": "status", "data": "Searching website..."}``
+    - ``{"event": "status", "data": "Reading indexed pages..."}``
+    - ``{"event": "status", "data": "Generating answer..."}``
+    - ``{"event": "start", "data": {"model": "..."}}``
+    - ``{"event": "delta", "data": {"text": "..."}}``
+    - ``{"event": "citations", "data": {"citations": [...]}}``
+    - ``{"event": "metrics", "data": {...}}``
+
+    On no-context fallback, yields a single delta with the grounded fallback
+    text and skips the LLM call entirely.
+
+    Args:
+        job_id: Scrape job UUID to scope retrieval, or None for global.
+        question: The user's natural language question.
+        request_id: Optional request identifier for tracing.
+
+    Raises:
+        ValueError: If input is invalid.
+        RuntimeError: If the pipeline fails.
+    """
+    from app.services.llm_service import generate_answer_stream as llm_stream
+
+    # 1. Input validation
+    if not question or not question.strip():
+        raise ValueError("Question cannot be empty or whitespace-only.")
+
+    # --- Status: Searching ---
+    yield {"event": "status", "data": "Searching website..."}
+
+    # 2. Empty knowledge-base guard
+    if not _has_any_indexed_content(job_id):
+        logger.info("[Stream] Empty knowledge base detected.")
+        yield {"event": "delta", "data": {"text": (
+            "No website has been indexed yet.\n\n"
+            "Please scrape a website first, then ask questions about its content."
+        )}}
+        yield {"event": "citations", "data": {"citations": []}}
+        return
+
+    # --- Status: Reading ---
+    yield {"event": "status", "data": "Reading indexed pages..."}
+
+    # 3. Context retrieval
+    try:
+        chunks = retrieve_context(job_id, question)
+    except Exception as e:
+        logger.error("[Stream] Context retrieval failed: %s", e)
+        raise RuntimeError(f"Failed to retrieve context: {e}") from e
+
+    # 4. Insufficient-context guard
+    if not chunks:
+        logger.info("[Stream] No relevant chunks. Returning grounded fallback.")
+        fallback_text = _build_insufficient_info_response(question, job_id)
+        yield {"event": "delta", "data": {"text": fallback_text}}
+        yield {"event": "citations", "data": {"citations": []}}
+        return
+
+    # --- Status: Generating ---
+    yield {"event": "status", "data": "Generating answer..."}
+
+    # 5. Build context and prompt
+    context_str = build_context(chunks)
+
+    # 6. Stream from LLM
+    full_answer = ""
+    try:
+        async for event_type, event_data in llm_stream(context_str, question):
+            if event_type == "start":
+                yield {"event": "start", "data": event_data}
+            elif event_type == "delta":
+                full_answer += event_data["text"]
+                yield {"event": "delta", "data": event_data}
+            elif event_type == "metrics":
+                yield {"event": "metrics", "data": event_data}
+    except Exception as e:
+        logger.exception("[Stream] LLM streaming failed: %s", e)
+        raise RuntimeError(str(e)) from e
+
+    # 7. Extract and emit citations
+    citations = extract_citations(chunks, full_answer)
+    yield {"event": "citations", "data": {"citations": citations}}
+
+    # 8. Return the full answer and citations for persistence
+    clean_answer = clean_citations_from_text(full_answer)
+    yield {"event": "_final", "data": {
+        "answer": clean_answer,
+        "citations": citations,
+    }}

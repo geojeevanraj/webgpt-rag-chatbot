@@ -1,6 +1,7 @@
 """FastAPI Router for chat and RAG query endpoints.
 
-Provides routes to submit questions to a scraped source (POST /chat) and retrieve
+Provides routes to submit questions to a scraped source (POST /chat),
+stream responses via SSE (POST /chat/stream), and retrieve
 conversation history for a job context (GET /chat/history/{job_id}).
 """
 
@@ -8,9 +9,12 @@ import asyncio
 from datetime import datetime
 import json
 import logging
+import time
+import uuid
 from typing import Any, Union
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
@@ -70,7 +74,6 @@ class WebChatMessage(BaseModel):
 class WebChatHistoryResponse(BaseModel):
     """Response containing list of previous chat messages."""
     messages: list[WebChatMessage] = Field(default_factory=list)
-
 
 
 
@@ -218,6 +221,301 @@ async def ask_question(
     )
 
 
+# =============================================================================
+# Streaming SSE Endpoint
+# =============================================================================
+
+@router.post(
+    "/chat/stream",
+    summary="Stream a RAG-grounded answer via Server-Sent Events",
+    responses={
+        400: {"description": "Job not completed"},
+        404: {"description": "Job not found"},
+    },
+)
+async def stream_chat(
+    request_body: ChatWebRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Stream an SSE response for a chat question.
+
+    Returns a ``text/event-stream`` response with lifecycle events:
+    status, start, delta, citations, done, aborted, interrupted, error, heartbeat.
+    """
+    question_str = request_body.question.strip()
+    if not question_str:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Question cannot be empty or whitespace-only.",
+        )
+
+    # Pre-validate job before starting the stream
+    if request_body.job_id is not None:
+        stmt = select(ScrapeJob).where(ScrapeJob.id == request_body.job_id)
+        res = await db.execute(stmt)
+        job = res.scalar_one_or_none()
+
+        if not job:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Scrape job '{request_body.job_id}' not found.",
+            )
+        if job.status != "completed":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Source is still being processed (current status: '{job.status}'). Please wait.",
+            )
+
+    # Check conversation router first
+    from app.services.conversation_router import detect_intent, build_response as build_conv_response
+
+    intent = detect_intent(question_str)
+    conv_answer: str | None = None
+
+    if intent:
+        source_title: str | None = None
+        source_url: str | None = None
+        if request_body.job_id is not None:
+            try:
+                stmt_ctx = select(ScrapeJob).where(ScrapeJob.id == request_body.job_id)
+                res_ctx = await db.execute(stmt_ctx)
+                job_ctx = res_ctx.scalar_one_or_none()
+                if job_ctx:
+                    source_title = job_ctx.domain or None
+                    source_url = job_ctx.seed_url or None
+            except Exception:
+                pass
+
+        conv_answer = build_conv_response(
+            intent,
+            source_title=source_title,
+            source_url=source_url,
+        )
+        logger.info(
+            "[Stream] Conversation router matched intent '%s'.", intent,
+        )
+
+    # Generate unique IDs for this stream
+    request_id = uuid.uuid4().hex[:12]
+    stream_id = uuid.uuid4().hex[:12]
+
+    async def sse_generator():
+        """Inner async generator producing SSE-formatted text lines."""
+        event_counter = 0
+        seq_counter = 0
+        accumulated_answer = ""
+        accumulated_citations: list[dict] = []
+        model_used = ""
+        metrics_data: dict = {}
+        gen_start = time.time()
+        heartbeat_task = None
+        stream_completed = False
+
+        def _build_event(event_name: str, data: dict) -> str:
+            """Format a single SSE event packet with metadata."""
+            nonlocal event_counter, seq_counter
+            event_counter += 1
+            seq_counter += 1
+            payload = {
+                "event_id": event_counter,
+                "stream_id": stream_id,
+                "request_id": request_id,
+                "seq": seq_counter,
+                **data,
+            }
+            return f"event: {event_name}\ndata: {json.dumps(payload)}\n\n"
+
+        # Heartbeat background task
+        heartbeat_active = True
+
+        async def _heartbeat():
+            nonlocal event_counter, seq_counter
+            while heartbeat_active:
+                await asyncio.sleep(10)
+                if not heartbeat_active:
+                    break
+                event_counter += 1
+                payload = {
+                    "event_id": event_counter,
+                    "stream_id": stream_id,
+                    "request_id": request_id,
+                    "seq": 0,  # Heartbeats don't increment seq
+                }
+                yield f"event: heartbeat\ndata: {json.dumps(payload)}\n\n"
+
+        try:
+            # Handle conversation router short-circuit
+            if conv_answer is not None:
+                yield _build_event("start", {"model": "conversation_router"})
+                yield _build_event("delta", {"text": conv_answer})
+                yield _build_event("citations", {"citations": []})
+
+                gen_ms = (time.time() - gen_start) * 1000
+                yield _build_event("done", {
+                    "model": "conversation_router",
+                    "finish_reason": "stop",
+                    "usage": {
+                        "generation_ms": round(gen_ms, 1),
+                        "characters_streamed": len(conv_answer),
+                        "tokens_streamed": len(conv_answer) // 4,
+                        "tokens_per_second": 0,
+                    },
+                })
+
+                # Persist
+                try:
+                    from app.core.database import async_session_factory
+                    async with async_session_factory() as persist_db:
+                        persist_db.add(ChatMessage(
+                            job_id=request_body.job_id,
+                            role="user",
+                            content=question_str,
+                        ))
+                        persist_db.add(ChatMessage(
+                            job_id=request_body.job_id,
+                            role="assistant",
+                            content=conv_answer,
+                            sources="[]",
+                        ))
+                        await persist_db.commit()
+                except Exception as db_err:
+                    logger.warning("[Stream] Failed to persist conv router history: %s", db_err)
+
+                stream_completed = True
+                return
+
+            # Full RAG streaming pipeline
+            from app.services.rag import generate_answer_stream
+
+            async for item in generate_answer_stream(
+                request_body.job_id, question_str, request_id,
+            ):
+                # Check for client disconnect
+                if await request.is_disconnected():
+                    logger.info("[Stream] Client disconnected. Emitting interrupted event.")
+
+                    # Emit interrupted with accumulated data
+                    yield _build_event("interrupted", {
+                        "message": "Client disconnected",
+                        "citations": accumulated_citations,
+                    })
+
+                    # Persist partial response
+                    if accumulated_answer:
+                        try:
+                            from app.core.database import async_session_factory
+                            from app.services.rag import clean_citations_from_text
+                            async with async_session_factory() as persist_db:
+                                clean_answer = clean_citations_from_text(accumulated_answer)
+                                persist_db.add(ChatMessage(
+                                    job_id=request_body.job_id,
+                                    role="user",
+                                    content=question_str,
+                                ))
+                                persist_db.add(ChatMessage(
+                                    job_id=request_body.job_id,
+                                    role="assistant",
+                                    content=clean_answer,
+                                    sources=json.dumps(accumulated_citations),
+                                ))
+                                await persist_db.commit()
+                        except Exception as db_err:
+                            logger.warning("[Stream] Failed to persist partial response: %s", db_err)
+                    return
+
+                event_name = item["event"]
+                event_data = item["data"]
+
+                if event_name == "status":
+                    yield _build_event("status", {"text": event_data})
+                elif event_name == "start":
+                    model_used = event_data.get("model", "")
+                    yield _build_event("start", {"model": model_used})
+                elif event_name == "delta":
+                    accumulated_answer += event_data.get("text", "")
+                    yield _build_event("delta", event_data)
+                elif event_name == "citations":
+                    accumulated_citations = event_data.get("citations", [])
+                    yield _build_event("citations", event_data)
+                elif event_name == "metrics":
+                    metrics_data = event_data
+                elif event_name == "_final":
+                    # Internal event — use for persistence but don't emit
+                    final_answer = event_data.get("answer", accumulated_answer)
+                    final_citations = event_data.get("citations", accumulated_citations)
+
+                    # Persist to database
+                    try:
+                        from app.core.database import async_session_factory
+                        async with async_session_factory() as persist_db:
+                            persist_db.add(ChatMessage(
+                                job_id=request_body.job_id,
+                                role="user",
+                                content=question_str,
+                            ))
+                            persist_db.add(ChatMessage(
+                                job_id=request_body.job_id,
+                                role="assistant",
+                                content=final_answer,
+                                sources=json.dumps(final_citations),
+                            ))
+                            await persist_db.commit()
+                    except Exception as db_err:
+                        logger.warning("[Stream] Failed to persist chat history: %s", db_err)
+
+            # Emit done event
+            gen_ms = (time.time() - gen_start) * 1000
+            usage = metrics_data if metrics_data else {
+                "generation_ms": round(gen_ms, 1),
+                "characters_streamed": len(accumulated_answer),
+                "tokens_streamed": len(accumulated_answer) // 4,
+                "tokens_per_second": 0,
+            }
+            yield _build_event("done", {
+                "model": model_used,
+                "finish_reason": "stop",
+                "usage": usage,
+            })
+            stream_completed = True
+
+        except Exception as e:
+            logger.exception("[Stream] SSE generator error: %s", e)
+            yield _build_event("error", {"message": str(e)})
+
+            # Persist partial response on error
+            if accumulated_answer:
+                try:
+                    from app.core.database import async_session_factory
+                    from app.services.rag import clean_citations_from_text
+                    async with async_session_factory() as persist_db:
+                        clean_answer = clean_citations_from_text(accumulated_answer)
+                        persist_db.add(ChatMessage(
+                            job_id=request_body.job_id,
+                            role="user",
+                            content=question_str,
+                        ))
+                        persist_db.add(ChatMessage(
+                            job_id=request_body.job_id,
+                            role="assistant",
+                            content=clean_answer,
+                            sources=json.dumps(accumulated_citations),
+                        ))
+                        await persist_db.commit()
+                except Exception as db_err:
+                    logger.warning("[Stream] Failed to persist error partial response: %s", db_err)
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get(
     "/chat/history/{job_id}",
     response_model=WebChatHistoryResponse,
@@ -351,3 +649,5 @@ async def debug_gemini() -> dict[str, Any]:
             "error": str(e),
             "error_type": type(e).__name__
         }
+
+

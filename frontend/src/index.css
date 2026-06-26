@@ -303,3 +303,31 @@ body {
 .prose em {
   font-style: italic;
 }
+
+/* Streaming Cursor Styles */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.streaming-cursor.active {
+  display: inline-block;
+  margin-left: 2px;
+  animation: cursor-blink 0.8s infinite;
+  color: var(--accent-blue);
+  font-weight: bold;
+}
+
+.streaming-cursor.completed {
+  display: inline-block;
+  margin-left: 2px;
+  opacity: 0;
+  transition: opacity 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .streaming-cursor.active {
+    animation: none !important;
+  }
+}
+

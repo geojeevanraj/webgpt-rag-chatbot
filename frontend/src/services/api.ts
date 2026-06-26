@@ -8,7 +8,9 @@ import {
   SourceSummary,
   WebChatHistoryResponse,
   SourcePagesResponse,
+  CitationInfo,
 } from "../types/api";
+
 
 /**
  * Custom application-level API Error wrapper.
@@ -140,6 +142,110 @@ export const api = {
       method: "POST",
       body: JSON.stringify(req),
     }),
+
+  /**
+   * Submit a chat question and stream the response via Server-Sent Events.
+   */
+  streamChatResponse: async (
+    req: ChatWebRequest,
+    callbacks: {
+      onStatus?: (text: string) => void;
+      onStart?: (model: string) => void;
+      onDelta?: (text: string) => void;
+      onCitations?: (citations: CitationInfo[]) => void;
+      onDone?: (data: { model: string; finish_reason: string; usage: any }) => void;
+      onAborted?: () => void;
+      onInterrupted?: (message: string, citations: CitationInfo[]) => void;
+      onError?: (message: string) => void;
+      onHeartbeat?: () => void;
+    },
+    signal?: AbortSignal
+  ) => {
+    const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+    const response = await fetch(`${API_URL}/chat/stream`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req),
+      signal,
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const detail = data.detail || response.statusText || "An unexpected error occurred.";
+      throw new APIError(response.status, detail);
+    }
+
+    if (!response.body) {
+      throw new APIError(0, "Readable stream not supported by browser.");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      let currentEvent = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep the last partial line in the buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+
+          if (trimmed.startsWith("event:")) {
+            currentEvent = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith("data:")) {
+            const dataStr = trimmed.slice(5).trim();
+            try {
+              const parsed = JSON.parse(dataStr);
+              switch (currentEvent) {
+                case "status":
+                  callbacks.onStatus?.(parsed.text);
+                  break;
+                case "start":
+                  callbacks.onStart?.(parsed.model);
+                  break;
+                case "delta":
+                  callbacks.onDelta?.(parsed.text);
+                  break;
+                case "citations":
+                  callbacks.onCitations?.(parsed.citations || []);
+                  break;
+                case "done":
+                  callbacks.onDone?.(parsed);
+                  break;
+                case "aborted":
+                  callbacks.onAborted?.();
+                  break;
+                case "interrupted":
+                  callbacks.onInterrupted?.(parsed.message || "Interrupted", parsed.citations || []);
+                  break;
+                case "error":
+                  callbacks.onError?.(parsed.message || "Unknown error");
+                  break;
+                case "heartbeat":
+                  callbacks.onHeartbeat?.();
+                  break;
+              }
+            } catch (err) {
+              console.error("Failed to parse SSE data block", dataStr, err);
+            }
+            currentEvent = ""; // Reset event
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  },
 
   /**
    * Retrieve all previous conversation messages for a source context.

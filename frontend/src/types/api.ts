@@ -55,6 +55,16 @@ export interface ChatWebResponse {
   citations: CitationInfo[];
 }
 
+export type StreamState =
+  | "idle"
+  | "searching"
+  | "retrieving"
+  | "generating"
+  | "completed"
+  | "aborted"
+  | "interrupted"
+  | "error";
+
 export interface WebChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -62,6 +72,9 @@ export interface WebChatMessage {
   citations?: CitationInfo[] | null;
   created_at: string;
   isError?: boolean;
+  isStreaming?: boolean;
+  streamState?: StreamState;
+  statusText?: string;
 }
 
 export interface WebChatHistoryResponse {

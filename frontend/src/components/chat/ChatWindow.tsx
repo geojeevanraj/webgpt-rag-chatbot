@@ -20,7 +20,7 @@ export default function ChatWindow({
   activeSource,
   onScrapeSuccess,
 }: ChatWindowProps) {
-  const { messages, loading, generating, error, sendMessage } = useChat(activeSourceId);
+  const { messages, loading, generating, streamState, error, sendMessage, stopGeneration } = useChat(activeSourceId);
 
   // Calculate favicon URL with fallbacks
   const faviconUrl = useMemo(() => {
@@ -76,11 +76,22 @@ export default function ChatWindow({
   // Ref to the scrollable message container
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to bottom when messages load/change
+  const prevMessageCountRef = useRef(0);
+
+  // Scroll to bottom when messages load/change, keeping user scroll position locked if they scrolled up
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
-    el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+
+    const isCloseToBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 80;
+    const lastMsg = messages[messages.length - 1];
+    const lastIsUser = lastMsg && lastMsg.role === "user";
+    const wasEmpty = prevMessageCountRef.current === 0 && messages.length > 0;
+
+    if (wasEmpty || lastIsUser || isCloseToBottom) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+    prevMessageCountRef.current = messages.length;
   }, [messages]);
 
   const handleRegenerate = async () => {
@@ -192,7 +203,12 @@ export default function ChatWindow({
           </div>
 
           {/* Chat text area input */}
-          <ChatInput onSend={sendMessage} disabled={generating || loading} />
+          <ChatInput
+            onSend={sendMessage}
+            onStop={stopGeneration}
+            disabled={generating || loading}
+            isStreaming={generating}
+          />
         </div>
       )}
 
