@@ -58,9 +58,13 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
 
     logger.debug("Generating Gemini embeddings for batch of %d text segments", len(texts))
     try:
+        model_name = settings.EMBEDDING_MODEL
+        if not model_name or "gemini-embedding" not in model_name:
+            model_name = "models/gemini-embedding-001"
+
         genai.configure(api_key=settings.GEMINI_API_KEY)
         response = genai.embed_content(
-            model=settings.EMBEDDING_MODEL,
+            model=model_name,
             content=texts,
             task_type="retrieval_document"
         )
