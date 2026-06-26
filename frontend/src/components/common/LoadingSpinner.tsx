@@ -15,7 +15,7 @@ export default function LoadingSpinner({ size = "md", className = "" }: LoadingS
   return (
     <div className={`flex items-center justify-center ${className}`} role="status">
       <svg
-        className={`animate-spin text-brand-primary ${sizeClasses[size]}`}
+        className={`animate-spin text-accent-blue ${sizeClasses[size]}`}
         xmlns="http://www.w3.org/2000/svg"
         fill="none"
         viewBox="0 0 24 24"

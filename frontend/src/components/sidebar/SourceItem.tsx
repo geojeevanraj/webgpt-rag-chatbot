@@ -41,16 +41,21 @@ export default function SourceItem({
   return (
     <div
       onClick={onSelect}
-      className={`group relative flex w-full flex-col gap-2 rounded-lg border p-3 text-left transition cursor-pointer ${
+      className={`group relative flex w-full flex-col gap-2.5 rounded-lg border p-3 text-left transition-all duration-200 ease-out cursor-pointer hover:-translate-y-[2px] hover:scale-[1.01] hover:shadow-soft ${
         isSelected
-          ? "bg-indigo-600/10 border-indigo-500/70 text-indigo-300 shadow-md shadow-indigo-600/5 ring-1 ring-indigo-500/30"
-          : "bg-slate-900/35 border-slate-800/80 text-slate-300 hover:bg-slate-900 hover:text-slate-100"
+          ? "bg-surface-elevated border-accent-blue/30 text-text-primary shadow-soft"
+          : "bg-surface-secondary border-white/[0.06] text-text-secondary hover:bg-surface-secondary/70 hover:text-text-primary"
       }`}
     >
-      <div className="flex items-center justify-between gap-2 overflow-hidden">
-        <div className="flex items-center gap-2.5 overflow-hidden">
-          <Database className="h-4 w-4 text-slate-500 shrink-0" />
-          <div className="truncate font-semibold text-slate-200">{source.domain}</div>
+      {/* Selected Left Accent Indicator */}
+      {isSelected && (
+        <div className="absolute left-0 top-2.5 bottom-2.5 w-1 bg-accent-blue rounded-r" />
+      )}
+
+      <div className="flex items-center justify-between gap-4 overflow-hidden">
+        <div className="flex items-center gap-3 overflow-hidden">
+          <Database className={`h-4 w-4 shrink-0 transition-colors duration-[--transition-fast] ${isSelected ? "text-accent-blue" : "text-text-muted"}`} />
+          <div className="truncate font-semibold text-text-primary font-outfit text-sm">{source.domain}</div>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -65,7 +70,7 @@ export default function SourceItem({
             type="button"
             onClick={handleDelete}
             disabled={isDeleting}
-            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 hover:text-rose-400 text-slate-500 p-0.5 rounded transition disabled:cursor-not-allowed cursor-pointer"
+            className="opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-within:opacity-100 hover:text-rose-400 text-text-muted p-1 rounded-sm transition-all duration-[--transition-fast] disabled:cursor-not-allowed cursor-pointer hover:bg-rose-500/10"
           >
             {isDeleting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -77,13 +82,13 @@ export default function SourceItem({
       </div>
 
       {/* Metrics Row */}
-      <div className="flex items-center gap-3 text-[10px] text-slate-500 font-medium">
+      <div className="flex items-center gap-4 text-[10px] text-text-muted font-medium font-inter">
         <div>
-          Pages: <span className="font-semibold text-slate-300">{source.pages_scraped}</span>
+          Pages: <span className="font-semibold text-text-secondary">{source.pages_scraped}</span>
         </div>
-        <div className="h-2.5 w-px bg-slate-800" />
+        <div className="h-3 w-px bg-border-subtle" />
         <div>
-          Chunks: <span className="font-semibold text-slate-300">{source.total_chunks}</span>
+          Chunks: <span className="font-semibold text-text-secondary">{source.total_chunks}</span>
         </div>
       </div>
     </div>

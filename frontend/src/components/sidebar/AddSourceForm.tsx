@@ -46,7 +46,7 @@ export default function AddSourceForm({ onSuccess }: AddSourceFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="space-y-4">
       <div className="relative">
         <input
           type="text"
@@ -54,12 +54,12 @@ export default function AddSourceForm({ onSuccess }: AddSourceFormProps) {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="Enter website URL (https://...)"
           disabled={loading}
-          className="w-full rounded-md border border-slate-800 bg-slate-900/60 px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500 focus:border-indigo-500/50 focus:outline-none focus:ring-1 focus:ring-indigo-500/30 disabled:opacity-50 disabled:cursor-not-allowed transition"
+          className="w-full rounded-full border border-border-subtle bg-surface-primary px-4 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent-blue/50 focus:outline-none focus:ring-1 focus:ring-accent-blue/30 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-[--transition-fast]"
         />
       </div>
 
       {error && (
-        <div className="rounded border border-rose-500/15 bg-rose-500/10 px-2.5 py-1.5 text-[10px] font-medium text-rose-400 leading-relaxed">
+        <div className="rounded-md border border-rose-500/15 bg-rose-500/10 px-4 py-2 text-[10px] font-medium text-rose-400 leading-relaxed font-inter">
           {error}
         </div>
       )}
@@ -67,7 +67,7 @@ export default function AddSourceForm({ onSuccess }: AddSourceFormProps) {
       <button
         type="submit"
         disabled={loading}
-        className="flex w-full items-center justify-center gap-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 text-xs font-semibold shadow-sm transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+        className="flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-accent-blue to-accent-purple hover:opacity-90 active:scale-[0.98] text-white px-4 py-2 text-xs font-semibold shadow-soft transition-all duration-[--transition-fast] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer font-outfit"
       >
         {loading ? (
           <>
@@ -83,4 +83,5 @@ export default function AddSourceForm({ onSuccess }: AddSourceFormProps) {
       </button>
     </form>
   );
+
 }

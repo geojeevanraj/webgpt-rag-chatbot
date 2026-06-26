@@ -25,7 +25,7 @@ export default function SourceList({
           Loading indexed sources...
         </div>
       ) : sources.length === 0 ? (
-        <div className="text-center py-8 text-xs text-slate-500 leading-relaxed border border-dashed border-slate-800 rounded-lg p-4 bg-slate-900/10">
+        <div className="text-center py-8 text-xs text-text-muted leading-relaxed border border-dashed border-border-subtle rounded-lg p-4 bg-surface-primary">
           No data sources indexed yet. Submitting a URL in the form above to begin.
         </div>
       ) : (
